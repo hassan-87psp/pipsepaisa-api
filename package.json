@@ -1,0 +1,6 @@
+{
+  "name": "pipsepaisa-api",
+  "version": "1.0.0",
+  "description": "PipSePaisa API proxies: news, economic calendar, currency strength",
+  "private": true
+}
