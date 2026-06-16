@@ -1,5 +1,5 @@
 // World / Forex news for PipSePaisa News Hub
-// Returns: { success: true, items: [{ title, desc, date, url, source }] }
+// Returns: { success: true, items: [{ title, desc, date, link, url, source }] }
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 's-maxage=180, stale-while-revalidate=300');
@@ -9,15 +9,15 @@ module.exports = async (req, res) => {
     'https://news.google.com/rss/search?q=forex%20OR%20gold%20OR%20%22central%20bank%22%20OR%20geopolitics%20when:2d&hl=en-US&gl=US&ceid=US:en',
     'https://news.google.com/rss/search?q=war%20OR%20conflict%20OR%20sanctions%20OR%20%22interest%20rate%22%20when:2d&hl=en-US&gl=US&ceid=US:en'
   ];
-  const strip = (s) => (s || '')
+  const decode = (s) => (s || '')
     .replace(/<!\[CDATA\[|\]\]>/g, '')
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&[a-z]+;/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const between = (block, tag) => {
-    const m = block.match(new RegExp('<' + tag + '[^>]*>([\\s\\S]*?)<\\/' + tag + '>', 'i'));
-    return m ? strip(m[1]) : '';
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&');
+  const clean = (s) => decode(s).replace(/<[^>]*>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+  const tag = (block, t) => {
+    const m = block.match(new RegExp('<' + t + '[^>]*>([\\s\\S]*?)<\\/' + t + '>', 'i'));
+    return m ? m[1] : '';
   };
 
   try {
@@ -28,19 +28,20 @@ module.exports = async (req, res) => {
         const xml = await r.text();
         const blocks = xml.split('<item>').slice(1);
         for (const b of blocks.slice(0, 30)) {
-          const title = between(b, 'title');
+          const title = clean(tag(b, 'title'));
           if (!title) continue;
+          const link = decode(tag(b, 'link')).replace(/<[^>]*>/g, '').trim();
           items.push({
             title,
-            desc: between(b, 'description'),
-            date: between(b, 'pubDate') || new Date().toISOString(),
-            url: between(b, 'link'),
+            desc: clean(tag(b, 'description')).slice(0, 220),
+            date: clean(tag(b, 'pubDate')) || new Date().toISOString(),
+            link: link,
+            url: link,
             source: (title.split(' - ').pop() || 'News')
           });
         }
       } catch (e) { /* skip feed */ }
     }
-    // dedupe by title
     const seen = new Set();
     const uniq = items.filter(n => { const k = n.title.slice(0, 50); if (seen.has(k)) return false; seen.add(k); return true; });
     uniq.sort((a, b) => new Date(b.date) - new Date(a.date));
