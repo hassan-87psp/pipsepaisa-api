@@ -29,7 +29,7 @@ export default async function handler(req, res) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.6, maxOutputTokens: 1200 }
+              generationConfig: { temperature: 0.6, maxOutputTokens: 2200 }
             })
           }
         );
@@ -52,7 +52,7 @@ export default async function handler(req, res) {
           body: JSON.stringify({
             model: 'llama-3.3-70b-versatile',
             temperature: 0.6,
-            max_tokens: 1200,
+            max_tokens: 2200,
             messages: [
               { role: 'system', content: 'You are a professional forex trading coach. Be clear, specific and encouraging.' },
               { role: 'user', content: prompt }
