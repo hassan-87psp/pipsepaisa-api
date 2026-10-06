@@ -1,24 +1,78 @@
 // api/ai-report.js
-// PipSePaisa — AI Trade Report endpoint (Gemini free -> Groq free fallback)
-// Keys are read from Vercel Environment Variables: GEMINI_API_KEY, GROQ_API_KEY
-// Frontend sends POST { prompt: "..." }  -> returns { report: "...", provider: "gemini|groq" }
+// PipSePaisa — authenticated AI Trade Report endpoint
+// Provider keys stay server-side in Vercel Environment Variables.
+
+const SUPABASE_URL = 'https://etfolhinohgmskbfjoyh.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY =
+  process.env.SUPABASE_PUBLISHABLE_KEY ||
+  'sb_publishable_LgmfuH2ePiY8fxNGs7nTTA_FSS_oPBw';
+
+const ALLOWED_ORIGINS = new Set([
+  'https://www.pipsepaisa.com',
+  'https://pipsepaisa.com',
+  'https://hassan-87psp.github.io'
+]);
+
+function applyCors(req, res) {
+  const origin = String(req.headers.origin || '');
+  if (ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Cache-Control', 'no-store');
+  return !origin || ALLOWED_ORIGINS.has(origin);
+}
+
+async function consumeAiAllowance(authHeader) {
+  try {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/rpc/psp_ai_rate_limit_v475', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_PUBLISHABLE_KEY,
+        'Authorization': authHeader
+      },
+      body: '{}'
+    });
+    if (!r.ok) return { ok: false, status: 401 };
+    const allowed = await r.json();
+    return { ok: allowed === true, status: allowed === true ? 200 : 429 };
+  } catch (_) {
+    return { ok: false, status: 503 };
+  }
+}
 
 export default async function handler(req, res) {
-  // --- CORS (allow your site to call this) ---
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  const corsOk = applyCors(req, res);
+  if (req.method === 'OPTIONS') return corsOk ? res.status(204).end() : res.status(403).end();
+  if (!corsOk) return res.status(403).json({ error: 'Origin not allowed' });
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  const contentLength = Number(req.headers['content-length'] || 0);
+  if (contentLength > 20000) return res.status(413).json({ error: 'Request too large' });
+
+  const authHeader = String(req.headers.authorization || '');
+  if (!/^Bearer\s+\S+$/i.test(authHeader)) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  const allowance = await consumeAiAllowance(authHeader);
+  if (!allowance.ok) {
+    if (allowance.status === 429) return res.status(429).json({ error: 'AI request limit reached. Please try again later.' });
+    if (allowance.status === 503) return res.status(503).json({ error: 'Security check temporarily unavailable.' });
+    return res.status(401).json({ error: 'Invalid or expired session' });
+  }
+
   try {
-    // body may arrive as string on some setups
     let body = req.body;
-    if (typeof body === 'string') { try { body = JSON.parse(body); } catch (e) { body = {}; } }
-    const prompt = (body && body.prompt ? String(body.prompt) : '').slice(0, 12000);
+    if (typeof body === 'string') {
+      try { body = JSON.parse(body); } catch (_) { body = {}; }
+    }
+    const prompt = (body && body.prompt ? String(body.prompt) : '').slice(0, 8000);
     if (!prompt) return res.status(400).json({ error: 'Missing prompt' });
 
-    // ---------- 1) Try Google Gemini (free Flash) ----------
     const GEMINI_KEY = process.env.GEMINI_API_KEY;
     if (GEMINI_KEY) {
       try {
@@ -38,11 +92,9 @@ export default async function handler(req, res) {
           const txt = data?.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '';
           if (txt.trim()) return res.status(200).json({ report: txt.trim(), provider: 'gemini' });
         }
-        // if not ok (e.g. 429 quota), fall through to Groq
-      } catch (e) { /* fall through */ }
+      } catch (_) {}
     }
 
-    // ---------- 2) Fallback: Groq (free, Llama) ----------
     const GROQ_KEY = process.env.GROQ_API_KEY;
     if (GROQ_KEY) {
       try {
@@ -64,12 +116,11 @@ export default async function handler(req, res) {
           const txt = data?.choices?.[0]?.message?.content || '';
           if (txt.trim()) return res.status(200).json({ report: txt.trim(), provider: 'groq' });
         }
-      } catch (e) { /* fall through */ }
+      } catch (_) {}
     }
 
-    // ---------- Both failed ----------
     return res.status(503).json({ error: 'AI temporarily unavailable. Please try again later.' });
-  } catch (err) {
-    return res.status(500).json({ error: String(err && err.message || err) });
+  } catch (_) {
+    return res.status(500).json({ error: 'Unexpected server error' });
   }
 }
