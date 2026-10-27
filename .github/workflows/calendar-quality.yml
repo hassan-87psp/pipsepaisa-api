@@ -1,0 +1,27 @@
+name: Economic Calendar Quality Check
+on:
+  push:
+    paths:
+      - 'api/calendar.js'
+      - 'tests/calendar-alignment.test.cjs'
+      - 'package.json'
+      - '.github/workflows/calendar-quality.yml'
+  pull_request:
+    paths:
+      - 'api/calendar.js'
+      - 'tests/calendar-alignment.test.cjs'
+      - 'package.json'
+permissions:
+  contents: read
+jobs:
+  calendar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate calendar release naming, timings and snapshot safety
+        run: npm test
