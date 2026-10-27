@@ -213,12 +213,13 @@ function gradeHeadline(title) {
   if(!t)return out('cold',null,'No headline');
   if(/\b(?:22k|24k|18k|jewell?ery|per gram|per tola|gold rate in (?:hyderabad|delhi|mumbai|chennai))\b/.test(t))
     return out('cold',null,'Retail jewellery news');
-  const preview=/\b(?:ahead of|preview|survey|poll|week ahead|next week|this week|expected to|expects? (?:to|one more|another)|likely to|may |might |could |before the|forecast|analysts? (?:say|expect)|due next|set to)\b/.test(t);
+  const preview=/\b(?:ahead of|preview|survey|poll|week ahead|next week|this week|expected to|expects? (?:to|one more|another)|likely to|may |might |could |before the|analysts? (?:say|expect)|due next|set to)\b/.test(t);
   const exOfficial=/\b(?:former|ex-|retired)\b/.test(t);
   const actor=/\b(?:fed|fomc|federal reserve|powell|ecb|lagarde|bank of england|boe|boj|bank of japan|rba|rbnz|snb|boc|bank of canada)\b/.test(t);
   const rate=/\b(?:rates?|interest rate|policy rate|federal funds|monetary policy)\b/.test(t);
   const intervention=/\b(?:yen|jpy|fx market|forex market|finance minister|fin min|katayama|japan|boj)\b/.test(t) &&
     /\b(?:interven(?:e|es|tion)|decisive steps|prepared to take decisive|ready to act|emergency measures|buy yen|sell yen)\b/.test(t);
+  const talks=/\b(?:negotiat\w*|peace talks|in talks|peace effort|diplomatic efforts|proposed|proposal|draft ceasefire|discuss\w*)\b/.test(t);
   const war=/\b(?:iran|israel|russia|ukraine|taiwan|middle east|red sea|black sea|hormuz|yemen|houthi|military|defen[cs]e minister|defen[cs]e ministry)\b/.test(t);
   const attack=/\b(?:strikes?|attacks?|missiles?|airstrikes?|drones?|invasion|cargo ship|bombs?|blockade|escalat\w*|sinks?|sunk|shot down|ceasefire|war)\b/.test(t);
   const oil=/\b(?:oil|crude|brent|wti|opec|refiner|refinery|hormuz|oil tanker)\b/.test(t);
@@ -227,14 +228,15 @@ function gradeHeadline(title) {
   const trade=/\b(?:tariffs?|sanctions?|trade deal|import duties|export controls?|trade restriction|trade ban)\b/.test(t);
   const enacted=/\b(?:announces?|announced|orders?|ordered|imposes?|imposed|signed|signs?|effective|approved|approves?|halts?|halted|suspends?|suspended|cuts?|raises?|lifts?|deal reached|agrees? to)\b/.test(t);
   const macro=/\b(?:cpi|consumer price index|ppi|producer price index|core pce|nonfarm payrolls?|nfp|unemployment rate|jobless claims|us gdp|u\.s\. gdp|us retail sales|u\.s\. retail sales|federal funds rate)\b/.test(t);
-  const outcome=/\b(?:rises?|rose|falls?|fell|drops?|jump(?:s|ed)?|surges?|released?|report(?:s|ed)?|printed|prints?|surpris(?:e|es|ed)|beats?|misses?|to \d|at \d)\b/.test(t) &&
-    (/\d/.test(t)||/\b(?:released|surpris|beats?|misses?)\b/.test(t));
+  const outcome=/\b(?:rises?|rose|falls?|fell|drops?|jump(?:s|ed)?|surges?|released?|report(?:s|ed)?|printed|prints?|surpris(?:e|es|ed)|beats?|misses?|unexpectedly|to \d|at \d)\b/.test(t) &&
+    (/\d/.test(t)||/\b(?:released|surpris\w*|unexpectedly|beats?|misses?)\b/.test(t));
   const rateAction=/\b(?:cuts?|hikes?|raises?|holds?|held|leaves?|left|unchanged|decides?|decision|votes?|emergency|unexpectedly)\b/.test(t);
   const market=/\b(?:fx|forex|currency|currencies|dollar|usd|dxy|yen|jpy|eurusd|gbpusd|usdjpy|usdcad|audusd|nzdusd|usdchf|eur\/usd|gbp\/usd|gold|bullion|silver|xauusd|xagusd|oil|crude|brent|wti|opec|bond yields?|treasury yields?|stock markets?)\b/.test(t);
   const moves=/\b(?:rises?|falls?|climbs?|drops?|surges?|slumps?|jumps?|slides?|weakens?|strengthens?|rebounds?|trades?|hits?|holds?|eases?|retreats?|rall(?:y|ies)|plunges?|sinks?|gains?|outlook|pressure|volatility|prices?)\b/.test(t);
   if(intervention&&!preview)return out('hot','FX Intervention','Official FX market intervention warning');
-  if(war&&attack&&!preview)return out('hot','Geopolitics','Reported war or shipping-security development');
+  if(war&&attack&&!preview&&!talks)return out('hot','Geopolitics','Reported war or shipping-security development');
   if(oil&&oilDisruption&&!preview)return out('hot','Oil Supply','Reported supply disruption or oil-policy action');
+  if(/\bopec\b/.test(t)&&/\b(?:agrees?|announces?|decides?)\b/.test(t)&&/\b(?:increase|decrease|output|production|supply)\b/.test(t)&&!preview)return out('hot','Oil Supply','Reported OPEC production decision');
   if(policy&&trade&&enacted&&!preview)return out('hot','US Policy','Reported enacted or announced trade measure');
   if(actor&&rate&&rateAction&&!preview&&!exOfficial)return out('hot','Central Banks','Reported monetary policy rate decision');
   if(macro&&outcome&&!preview)return out('hot','Economic Data','Major economic data reported');
@@ -245,6 +247,7 @@ function gradeHeadline(title) {
     return out('warm','Central Banks','Central bank comments or meeting preview');
   if(macro)return out('warm','Economic Data','Economic calendar/report coverage');
   if(intervention)return out('warm','FX Intervention','Currency intervention commentary');
+  if(/\b(?:katayama|finance minister|fin min|japan)\b/.test(t)&&/\b(?:yen|jpy|fx market|currency market)\b/.test(t))return out('warm','FX Policy','Official currency-market comments');
   if(war&&/\b(?:war|strik|conflict|sanction|diplomatic|ceasefire|negotiat|peace|missile|attack|security)\w*\b/.test(t))
     return out('warm','Geopolitics','Geopolitical reports or negotiations');
   if(oil&&/\b(?:supply|output|production|oil price|inventory|crude|refin|shipping|opec|exports?|imports?|demand)\w*\b/.test(t))
@@ -290,8 +293,10 @@ function dedupe(items) {
   if(all.length<=MAX_ITEMS)return all;
   // Reserve enough room so crowded generic news cannot displace fresh
   // trading-relevant headlines. The All tab retains the remaining newest items.
-  const relevant=all.filter(x=>x.marketFocus);
-  const selected=new Set(relevant.slice(0,Math.min(300,MAX_ITEMS)));
+  const high=all.filter(x=>x.heat==='hot');
+  const medium=all.filter(x=>x.heat==='warm');
+  const selected=new Set(high.slice(0,220));
+  for(const item of medium.slice(0,Math.max(0,350-selected.size)))selected.add(item);
   for(const item of all) {
     if(selected.size>=MAX_ITEMS)break;
     selected.add(item);
