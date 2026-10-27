@@ -87,3 +87,38 @@ test('unverified policy time never manufactures a conference',()=>{
  assert.equal(addRecurringCompanions([e]).length,1);
  assert.equal(addRecurringCompanions([{...e,date:'2026-12-09T19:00:00.000Z',status:'estimated'}]).length,1);
 });
+
+test('published CPI y/y actual and previous retain their year-over-year units',()=>{
+ const row={country:'US',title:'US CPI Report October 2026',impact:'high',
+  release_at_utc:'2026-10-14T12:30:00+00:00',series_code:'us-cpi',
+  status:'released',unit:'% y/y',prior:'3.4',actual:'3.7',
+  source_url:'https://www.bls.gov/news.release/cpi.nr0.htm'};
+ const raw=require('../api/calendar.js')._test.normalize(row);
+ const result=addRecurringCompanions([raw]);
+ assert.equal(result.length,3);
+ assert.equal(result[0].title,'CPI y/y');
+ assert.equal(result[0].actual,'3.7%');
+ assert.equal(result[0].previous,'3.4%');
+ assert.equal(result.find(x=>x.title==='CPI m/m').actual,'');
+ assert.equal(result.find(x=>x.title==='Core CPI m/m').actual,'');
+});
+test('past NFP actual jobs and previous convert correctly to K and remain visible',()=>{
+ const raw=require('../api/calendar.js')._test.normalize({
+  country:'US',title:'US Employment Situation (Non-Farm Payrolls) October 2026',
+  impact:'high',release_at_utc:'2026-10-02T12:30:00+00:00',series_code:'us-nfp',
+  status:'released',unit:'jobs',prior:'133000',actual:'29000',
+  source_url:'https://www.bls.gov/schedule/news_release/bls.ics'
+ });
+ const result=addRecurringCompanions([raw]);
+ const payroll=result.find(x=>x.title==='Non-Farm Employment Change');
+ assert.equal(payroll.previous,'133K');
+ assert.equal(payroll.actual,'29K');
+ assert.equal(result.find(x=>x.title==='Unemployment Rate').actual,'');
+});
+test('unknown values remain genuinely missing rather than becoming 0 or invented forecasts',()=>{
+ const test=require('../api/calendar.js')._test;
+ assert.equal(test.formatRecordedValue(null,'% y/y'),'');
+ assert.equal(test.formatRecordedValue('','jobs'),'');
+ assert.equal(test.formatRecordedValue('0','%'),'0%');
+ assert.equal(test.formatRecordedValue('high yield 4.25%; bid-to-cover 2.4',''),'high yield 4.25%; bid-to-cover 2.4');
+});
