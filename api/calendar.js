@@ -22,6 +22,18 @@ function releaseInstant(row){
   }
   return NaN; // No fabricated midnight for date-only or uncertain releases.
 }
+// Show the provider's units as reported; never confuse m/m with y/y.
+function formatRecordedValue(value,unit){
+ const raw=nonempty(value,80);
+ if(!raw)return '';
+ const u=nonempty(unit,25).toLowerCase();
+ if(u==='jobs' && /^[-+]?\d+(?:\.\d+)?$/.test(raw)){
+  const n=Number(raw)/1000;
+  return Number.isInteger(n)?n+'K':(Math.round(n*10)/10)+'K';
+ }
+ if(u.startsWith('%') && /^[-+]?\d+(?:\.\d+)?$/.test(raw))return raw+'%';
+ return raw;
+}
 function normalize(row){
   if(!row||typeof row!=='object'||row.status==='cancelled')return null;
   const timestamp=releaseInstant(row);
@@ -31,11 +43,13 @@ function normalize(row){
   const currency=CURRENCY[country]||(/^([A-Z]{3})$/.test(country)?country:'');
   if(!title||!currency)return null;
   const impact=String(row.impact||'').toLowerCase();
-  const actual=row.actual==null?'':nonempty(row.actual,50);
+  const unit=nonempty(row.unit,30);
+  const actual=formatRecordedValue(row.actual,unit);
   return {date:new Date(timestamp).toISOString(),title,country:currency,
     impact:impact==='high'?'High':impact==='medium'?'Medium':'Low',
-    forecast:nonempty(row.consensus??row.forecast,50),previous:nonempty(row.prior??row.previous,50),
-    actual,source:'Finance Calendar',sourceUrl:nonempty(row.source_url||row.url,500),
+    forecast:formatRecordedValue(row.consensus??row.forecast,unit),
+    previous:formatRecordedValue(row.prior??row.previous,unit),
+    actual,unit,source:'Finance Calendar',sourceUrl:nonempty(row.source_url||row.url,500),
     status:nonempty(row.status,30),actualSource:actual?'Finance Calendar':null,
     seriesCode:nonempty(row.series_code,90),eventId:nonempty(row.id,140),
     releaseStage:nonempty(row.release_stage,40),period:nonempty(row.period,60)};
@@ -57,11 +71,15 @@ function nameEvent(row){
  }
  else if(e.country==='USD'&&(e.seriesCode==='us-nfp'||/US Employment Situation \(Non-Farm Payrolls\)/i.test(e.title))){
    e.sourceTitle=e.title;e.title='Non-Farm Employment Change';
-   if(!/^Non-Farm Employment Change$/i.test(row.title)){e.actual='';e.actualSource=null;}
+   if(!/^Non-Farm Employment Change$/i.test(row.title)&&
+     !/^(jobs|thousand jobs)$/i.test(row.unit||'')){e.actual='';e.actualSource=null;}
  }
  else if(e.country==='USD'&&(e.seriesCode==='us-cpi'||/US CPI Report/i.test(e.title))){
-   e.sourceTitle=e.title;e.title='CPI m/m';
-   if(!/^CPI m\/m$/i.test(row.title)){e.actual='';e.actualSource=null;}
+   e.sourceTitle=e.title;
+   // CPI y/y reported in a calendar row is NOT the CPI m/m figure.
+   const annual=/(?:%\s*y\/y|year.over.year|annual)/i.test(e.unit||'');
+   e.title=annual?'CPI y/y':'CPI m/m';
+   if(!annual&&!/^CPI m\/m$/i.test(row.title)){e.actual='';e.actualSource=null;}
  }
  else if(e.country==='USD'&&(e.seriesCode==='us-gdp'||/US Gross Domestic Product/i.test(e.title))){
    e.sourceTitle=e.title;
@@ -83,7 +101,7 @@ function appendMetric(rows,parent,title,id,date=parent.date){
 function addRecurringCompanions(rows){
  const merged=rows.map(nameEvent);
  for(const e of merged.slice()){
-  if(e.status!=='confirmed')continue;
+  if(e.status!=='confirmed'&&e.status!=='released')continue;
   const day=utcDay(e.date);
   if(isRate(e)){
    const et=new Intl.DateTimeFormat('en-GB',{timeZone:'America/New_York',
@@ -100,6 +118,7 @@ function addRecurringCompanions(rows){
   }
   if(e.country==='USD'&&e.seriesCode==='us-cpi'&&
     /^https:\/\/www\.bls\.gov\//.test(e.sourceUrl||'')){
+   appendMetric(merged,e,'CPI m/m','us-cpi-mm-'+day);
    appendMetric(merged,e,'Core CPI m/m','us-core-cpi-mm-'+day);
    appendMetric(merged,e,'CPI y/y','us-cpi-yy-'+day);
   }
@@ -166,7 +185,7 @@ async function getSchedule(){
  if(schedulePending)return schedulePending;
  schedulePending=(async()=>{
   try{
-   const from=isoDate(now-DAY),to=isoDate(now+21*DAY);
+   const from=isoDate(now-30*DAY),to=isoDate(now+21*DAY);
    const events=[];
    for(let offset=0;offset<1500;offset+=500){
     const params=new URLSearchParams({from,to,limit:'500',offset:String(offset)});
@@ -312,10 +331,10 @@ module.exports=async function handler(req,res){
  res.setHeader('X-Calendar-Source','Finance-Calendar-and-Official-BLS');
  if(!cache.rows.length)
    return res.status(503).json({error:'Verified calendar source temporarily unavailable',events:[],source:'Finance Calendar'});
- const events=addVerifiedFedEvents(cache.rows.filter(e=>Date.parse(e.date)>=now-DAY&&Date.parse(e.date)<=now+21*DAY).map(e=>({...e}))).map(alignTradingCalendarNames);
+ const events=addVerifiedFedEvents(cache.rows.filter(e=>Date.parse(e.date)>=now-30*DAY&&Date.parse(e.date)<=now+21*DAY).map(e=>({...e}))).map(alignTradingCalendarNames);
  await officialOverlay(events,now);
  // Existing site expects an array; these are verified provider rows, not demo data.
  return res.status(200).json(events);
 };
 // Export only pure helpers for local deterministic testing; no network requests during import.
-module.exports._test={normalize,releaseInstant,reportKind,reportDate,officialActual,sortUnique,addVerifiedFedEvents,addRecurringCompanions,nameEvent,alignTradingCalendarNames};
+module.exports._test={normalize,releaseInstant,reportKind,reportDate,officialActual,sortUnique,addVerifiedFedEvents,addRecurringCompanions,nameEvent,alignTradingCalendarNames,formatRecordedValue};
