@@ -53,12 +53,12 @@ function addVerifiedFedEvents(rows){
    /(?:Rate Decision|Federal Funds Rate|Interest Rate Decision)/i.test(row.title));
   if(!rate)continue;
   const companions=[
-   {title:'FOMC Statement',date:meeting.decision,pattern:/\bFOMC Statement\b|Federal Open Market Committee Statement/i},
-   {title:'FOMC Press Conference',date:meeting.press,pattern:/\bFOMC Press Conference\b|\bFed Press Conference\b/i}
+   {title:'FOMC Statement',date:meeting.decision,id:'us-fomc-statement-20261028',pattern:/\bFOMC Statement\b|Federal Open Market Committee Statement/i},
+   {title:'FOMC Press Conference',date:meeting.press,id:'us-fomc-presser-20261028',pattern:/\bFOMC Press Conference\b|\bFed Press Conference\b/i}
   ];
   for(const c of companions){
    if(merged.some(row=>row.country==='USD'&&row.date===c.date&&c.pattern.test(row.title)))continue;
-   merged.push({date:c.date,title:c.title,country:'USD',impact:'High',
+   merged.push({date:c.date,title:c.title,eventId:c.id,country:'USD',impact:'High',
     forecast:'',previous:'',actual:'',source:'Federal Reserve',
     sourceUrl:meeting.url,status:'confirmed',actualSource:null});
   }
