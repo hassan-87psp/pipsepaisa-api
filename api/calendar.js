@@ -89,8 +89,11 @@ function alignTradingCalendarNames(event){
   metricLabel:match.beaMetric?"Core PCE ex-food-and-energy m/m":match.name};
  if(match.beaMetric){
   // A package-level PCE actual cannot be displayed as Core PCE.
-  result.actual="";
-  result.actualSource=null;
+  // Keep an actual ONLY when the upstream record explicitly names core PCE m/m.
+  if(!/^core pce price index m\/m$/i.test(event.title)){
+   result.actual="";
+   result.actualSource=null;
+  }
   result.sourceUrl="https://www.bea.gov/data/personal-consumption-expenditures-price-index-excluding-food-and-energy";
  }else if(match.name==="Advance GDP q/q"){
   result.sourceUrl="https://www.bea.gov/news/schedule/full";
