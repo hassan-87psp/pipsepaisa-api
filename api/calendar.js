@@ -13,6 +13,7 @@ const DAY=86400000;
 let scheduleCache={at:0,rows:[],error:null};
 let schedulePending=null;
 let blsCache=new Map();
+let blsDeniedUntil=new Map();
 function nonempty(v,max=80){return v===null||v===undefined?'':String(v).trim().slice(0,max);}
 function isoDate(d){return new Date(d).toISOString().slice(0,10);}
 function releaseInstant(row){
@@ -277,9 +278,14 @@ function officialActual(title,kind,body){
 }
 async function getBls(kind,rapid=false){
  const cached=blsCache.get(kind),now=Date.now();
+ // BLS restricts automated fetching; respect 403/429 instead of retrying
+ // every 15 seconds. Calendar provider remains the verified fallback.
+ if((blsDeniedUntil.get(kind)||0)>now)return cached||{at:now,date:'',text:''};
  if(cached&&now-cached.at<(rapid?15000:300000))return cached;
  try{
   const response=await timedFetch(BLS[kind]+'?psp_check='+Math.floor(now/15000),6500);
+  if(response.status===403||response.status===429)
+    blsDeniedUntil.set(kind,now+3600000);
   if(!response.ok)throw new Error('BLS HTTP '+response.status);
   let txt=await response.text();
   if(txt.length>1000000)throw new Error('Oversize BLS response');
