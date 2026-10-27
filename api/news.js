@@ -210,7 +210,7 @@ function marketFocusTopic(title) {
   const t=String(title||'').toLowerCase();
   if (!t.trim()) return null;
   if (/\b(?:22k|24k|jewellery|jewelry|per gram|per tola|gold rate in hyderabad|gold rate in delhi|gold rate in mumbai)\b/.test(t)) return null;
-  if (/\b(?:fomc|federal reserve|powell|fed chair|ecb|lagarde|boe|bank of england|boj|bank of japan|snb|rba|rbnz)\b/.test(t) &&
+  if (/\b(?:fomc|fed|federal reserve|powell|fed chair|ecb|lagarde|boe|bank of england|boj|bank of japan|snb|rba|rbnz)\b/.test(t) &&
       /\b(?:rate|policy|hike|cut|hold|meeting|minutes|statement|press conference|speech|speaks|remarks|says|inflation|decision|outlook|testimony|warning)\b/.test(t)) return 'Central Banks';
   if (/\b(?:trump|white house|president of the united states|us treasury|treasury secretary)\b/.test(t) &&
       /\b(?:tariff|trade|sanction|econom|dollar|fed|rate|market|oil|export|import|china|speech|remarks|announce|executive order|address|policy|tax|budget)\w*\b/.test(t)) return 'US Policy';
