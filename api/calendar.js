@@ -139,9 +139,9 @@ function officialActual(title,kind,body){
  }
  return '';
 }
-async function getBls(kind){
+async function getBls(kind,rapid=false){
  const cached=blsCache.get(kind),now=Date.now();
- if(cached&&now-cached.at<15000)return cached;
+ if(cached&&now-cached.at<(rapid?15000:300000))return cached;
  try{
   const response=await timedFetch(BLS[kind]+'?psp_check='+Math.floor(now/15000),6500);
   if(!response.ok)throw new Error('BLS HTTP '+response.status);
@@ -160,11 +160,13 @@ async function getBls(kind){
 async function officialOverlay(events,now){
  const relevant=events.filter(e=>{
   const k=reportKind(e.title),t=Date.parse(e.date);
-  return e.country==='USD'&&k&&t>=now-90*60000&&t<=now+10*60000;
+  return e.country==='USD'&&k&&t>=now-24*3600000&&t<=now+10*60000;
  });
  if(!relevant.length)return false;
  const types=[...new Set(relevant.map(e=>reportKind(e.title)))];
- const lookups=await Promise.all(types.map(getBls));
+ const rapid=events.some(e=>e.country==='USD'&&types.includes(reportKind(e.title))&&
+   Math.abs(Date.parse(e.date)-now)<90*60000);
+ const lookups=await Promise.all(types.map(t=>getBls(t,rapid)));
  const byType=Object.fromEntries(types.map((t,i)=>[t,lookups[i]]));
  let enhanced=false;
  for(const e of relevant){
