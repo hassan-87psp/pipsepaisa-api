@@ -21,10 +21,25 @@ const FEEDS = [
   { name: 'Investing.com', category: 'Macro', url: 'https://www.investing.com/rss/news_14.rss' },
   { name: 'Investing.com', category: 'Gold', url: 'https://www.investing.com/rss/news_11.rss' },
   { name: 'Investing.com', category: 'Markets', url: 'https://www.investing.com/rss/news_25.rss' },
-  { name: 'MarketWatch', category: 'Markets', url: 'https://feeds.content.dowjones.io/public/rss/mw_topstories' }
+  { name: 'MarketWatch', category: 'Markets', url: 'https://feeds.content.dowjones.io/public/rss/mw_topstories' },
+  // Bloomberg's publicly published RSS headlines (not its paid news terminal feed).
+  { name: 'Bloomberg', category: 'Markets', url: 'https://www.bloomberg.com/feeds/news.rss' },
+  { name: 'Bloomberg', category: 'Markets', url: 'https://www.bloomberg.com/feeds/markets/news.rss' },
+  { name: 'Bloomberg', category: 'Macro', url: 'https://www.bloomberg.com/feeds/economics/news.rss' },
+  { name: 'Bloomberg', category: 'Markets', url: 'https://www.bloomberg.com/feeds/business/news.rss' },
+  { name: 'Bloomberg', category: 'Geopolitics', url: 'https://www.bloomberg.com/feeds/politics/news.rss' },
+  { name: 'Bloomberg', category: 'Markets', url: 'https://www.bloomberg.com/feeds/industries/news.rss' },
+  { name: 'Bloomberg', category: 'Crypto', url: 'https://www.bloomberg.com/feeds/crypto/news.rss' },
+  { name: 'Bloomberg', category: 'Markets', url: 'https://www.bloomberg.com/feeds/technology/news.rss' },
+  // Google News coverage helps catch Bloomberg stories absent from its short official RSS lists.
+  { name: 'Google News', category: 'Markets', url: google('site:bloomberg.com') },
+  { name: 'Google News', category: 'Forex', url: google('site:bloomberg.com dollar OR yen OR forex OR gold') },
+  { name: 'Google News', category: 'Macro', url: google('site:bloomberg.com interest rates OR inflation OR jobs') },
+  { name: 'Google News', category: 'Markets', url: google('site:reuters.com commodities OR currencies OR global markets') },
+  { name: 'Google News', category: 'Forex', url: google('forex live market reaction gold Fed Treasury currencies') }
 ];
 
-const MAX_ITEMS = 200;
+const MAX_ITEMS = 500;
 const CACHE_MS = 90 * 1000;
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 5500;
@@ -69,7 +84,7 @@ function classify(title, fallback) {
 function parseFeed(xml, feed, now) {
   const entries = xml.match(/<item(?:\s[^>]*)?>[\s\S]*?<\/item>/gi) || [];
   const results = [];
-  for (const block of entries.slice(0, 60)) {
+  for (const block of entries.slice(0, 100)) {
     const title = clean(tag(block, 'title'));
     const link = validUrl(tag(block, 'link'));
     const rawDate = clean(tag(block, 'pubDate') || tag(block, 'dc:date') || tag(block, 'published'));
