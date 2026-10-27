@@ -36,35 +36,77 @@ function normalize(row){
     impact:impact==='high'?'High':impact==='medium'?'Medium':'Low',
     forecast:nonempty(row.consensus??row.forecast,50),previous:nonempty(row.prior??row.previous,50),
     actual,source:'Finance Calendar',sourceUrl:nonempty(row.source_url||row.url,500),
-    status:nonempty(row.status,30),actualSource:actual?'Finance Calendar':null};
+    status:nonempty(row.status,30),actualSource:actual?'Finance Calendar':null,
+    seriesCode:nonempty(row.series_code,90),eventId:nonempty(row.id,140),
+    releaseStage:nonempty(row.release_stage,40),period:nonempty(row.period,60)};
 }
-// Additional distinct releases verified against the Federal Reserve's official
-// October 2026 calendar. Do not invent companion events for unverified meetings.
-const VERIFIED_FOMC_COMPANIONS=[
- {decision:"2026-10-28T18:00:00.000Z",press:"2026-10-28T18:30:00.000Z",
-  url:"https://www.federalreserve.gov/newsevents/2026-october.htm"}
-];
-function addVerifiedFedEvents(rows){
- const merged=rows.slice();
- for(const meeting of VERIFIED_FOMC_COMPANIONS){
-  const rate=rows.find(row=>row.country==='USD' && row.impact==='High' &&
-   row.status==='confirmed' && Date.parse(row.date)===Date.parse(meeting.decision) &&
-   /(?:FOMC|Federal Funds Rate|Fed Rate Decision)/i.test(row.title) &&
-   /(?:Rate Decision|Federal Funds Rate|Interest Rate Decision)/i.test(row.title));
-  if(!rate)continue;
-  const companions=[
-   {title:'FOMC Statement',date:meeting.decision,id:'us-fomc-statement-20261028',pattern:/\bFOMC Statement\b|Federal Open Market Committee Statement/i},
-   {title:'FOMC Press Conference',date:meeting.press,id:'us-fomc-presser-20261028',pattern:/\bFOMC Press Conference\b|\bFed Press Conference\b/i}
-  ];
-  for(const c of companions){
-   if(merged.some(row=>row.country==='USD'&&row.date===c.date&&c.pattern.test(row.title)))continue;
-   merged.push({date:c.date,title:c.title,eventId:c.id,country:'USD',impact:'High',
-    forecast:'',previous:'',actual:'',source:'Federal Reserve',
-    sourceUrl:meeting.url,status:'confirmed',actualSource:null});
+// Recurring automatic labels + confirmed accompanying metrics. No fixed dates.
+// Rules are conditional on known source series and confirmed release timestamp.
+function utcDay(iso){return iso.slice(0,10).replace(/-/g,'');}
+function isRate(e){return e.country==='USD'&&(e.seriesCode==='fomc'||
+ /^FOMC Rate Decision\b|^Federal Funds Rate\b/i.test(e.title))&&
+ !/\b(minutes|conference|speech|statement)\b/i.test(e.title);}
+function nameEvent(row){
+ const e={...row};
+ if(isRate(e)){e.sourceTitle=e.title;e.title='Federal Funds Rate';}
+ else if(e.country==='USD'&&(e.seriesCode==='us-pce'||/US Personal Income and Outlays \(PCE\)/i.test(e.title))){
+   e.sourceTitle=e.title;e.title='Core PCE Price Index m/m';
+   // Monthly BEA package figures must never masquerade as core PCE actuals.
+   if(!/^Core PCE Price Index m\/m$/i.test(row.title)){e.actual='';e.actualSource=null;}
+   e.metricLabel='Core PCE excluding food and energy, monthly';
+ }
+ else if(e.country==='USD'&&(e.seriesCode==='us-nfp'||/US Employment Situation \(Non-Farm Payrolls\)/i.test(e.title))){
+   e.sourceTitle=e.title;e.title='Non-Farm Employment Change';
+   if(!/^Non-Farm Employment Change$/i.test(row.title)){e.actual='';e.actualSource=null;}
+ }
+ else if(e.country==='USD'&&(e.seriesCode==='us-cpi'||/US CPI Report/i.test(e.title))){
+   e.sourceTitle=e.title;e.title='CPI m/m';
+   if(!/^CPI m\/m$/i.test(row.title)){e.actual='';e.actualSource=null;}
+ }
+ else if(e.country==='USD'&&(e.seriesCode==='us-gdp'||/US Gross Domestic Product/i.test(e.title))){
+   e.sourceTitle=e.title;
+   const stage=e.releaseStage.toLowerCase();
+   // Never call GDP 'Advance' unless stage is explicitly provided.
+   e.title=stage==='advance'?'Advance GDP q/q':stage==='second'?'Prelim GDP q/q':
+    stage==='third'?'Final GDP q/q':'GDP q/q';
+   if(!/\bGDP q\/q$/i.test(row.title)){e.actual='';e.actualSource=null;}
+ }
+ return e;
+}
+function appendMetric(rows,parent,title,id,date=parent.date){
+ if(rows.some(e=>e.country===parent.country&&e.date===date&&e.title.toLowerCase()===title.toLowerCase()))
+  return;
+ rows.push({date,title,eventId:id,country:parent.country,impact:'High',
+  forecast:'',previous:'',actual:'',source:parent.source,sourceUrl:parent.sourceUrl,
+  status:'confirmed',actualSource:null,derivedMetric:true});
+}
+function addRecurringCompanions(rows){
+ const merged=rows.map(nameEvent);
+ for(const e of merged.slice()){
+  if(e.status!=='confirmed')continue;
+  const day=utcDay(e.date);
+  if(isRate(e)){
+   const et=new Intl.DateTimeFormat('en-GB',{timeZone:'America/New_York',
+    hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(e.date));
+   if(et==='14:00'&&(e.seriesCode==='fomc'||/^https:\/\/www\.federalreserve\.gov\//.test(e.sourceUrl||''))){
+    appendMetric(merged,e,'FOMC Statement','us-fomc-statement-'+day);
+    appendMetric(merged,e,'FOMC Press Conference','us-fomc-presser-'+day,
+      new Date(Date.parse(e.date)+30*60000).toISOString());
+   }
+  }
+  if(e.country==='USD'&&e.seriesCode==='us-nfp'&&
+    /^https:\/\/www\.bls\.gov\//.test(e.sourceUrl||'')){
+   appendMetric(merged,e,'Unemployment Rate','us-unemployment-'+day);
+  }
+  if(e.country==='USD'&&e.seriesCode==='us-cpi'&&
+    /^https:\/\/www\.bls\.gov\//.test(e.sourceUrl||'')){
+   appendMetric(merged,e,'Core CPI m/m','us-core-cpi-mm-'+day);
+   appendMetric(merged,e,'CPI y/y','us-cpi-yy-'+day);
   }
  }
  return sortUnique(merged);
 }
+function addVerifiedFedEvents(rows){return addRecurringCompanions(rows);}
 // Trading-calendar names identify SPECIFIC metrics, not the broad release package.
 // Match the official Oct 2026 Fed/BEA times; never infer a Core PCE reading
 // from an unqualified headline PCE result.
@@ -81,16 +123,16 @@ const TRADING_OCT_2026=[
 ];
 function alignTradingCalendarNames(event){
  if(event.country!=="USD")return event;
- const match=TRADING_OCT_2026.find(x=>x.time===event.date&&x.test.test(event.title));
+ const match=TRADING_OCT_2026.find(x=>x.time===event.date&&x.test.test(event.sourceTitle||event.title));
  if(!match)return event;
  const result={...event,title:match.name,eventId:match.id,
-  sourceTitle:event.title,
+  sourceTitle:event.sourceTitle||event.title,
   // Explicitly record what is mapped: a BEA package contains many series.
   metricLabel:match.beaMetric?"Core PCE ex-food-and-energy m/m":match.name};
  if(match.beaMetric){
   // A package-level PCE actual cannot be displayed as Core PCE.
   // Keep an actual ONLY when the upstream record explicitly names core PCE m/m.
-  if(!/^core pce price index m\/m$/i.test(event.title)){
+  if(!/^core pce price index m\/m$/i.test(event.sourceTitle||event.title)){
    result.actual="";
    result.actualSource=null;
   }
@@ -276,4 +318,4 @@ module.exports=async function handler(req,res){
  return res.status(200).json(events);
 };
 // Export only pure helpers for local deterministic testing; no network requests during import.
-module.exports._test={normalize,releaseInstant,reportKind,reportDate,officialActual,sortUnique,addVerifiedFedEvents,alignTradingCalendarNames};
+module.exports._test={normalize,releaseInstant,reportKind,reportDate,officialActual,sortUnique,addVerifiedFedEvents,addRecurringCompanions,nameEvent,alignTradingCalendarNames};
