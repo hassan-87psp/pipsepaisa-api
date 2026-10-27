@@ -65,6 +65,44 @@ function addVerifiedFedEvents(rows){
  }
  return sortUnique(merged);
 }
+// Trading-calendar names identify SPECIFIC metrics, not the broad release package.
+// Match the official Oct 2026 Fed/BEA times; never infer a Core PCE reading
+// from an unqualified headline PCE result.
+// This dated snapshot was supplied by the admin on 27 October 2026. It is NOT
+// a live provider consensus and must be labelled as a historical snapshot.
+const TRADING_OCT_2026=[
+ {time:"2026-10-28T18:00:00.000Z",test:/\b(?:fomc|fed)\b.*rate decision|federal funds rate/i,
+  name:"Federal Funds Rate",forecast:"4.00%",previous:"4.00%",id:"us-fed-rate-20261028"},
+ {time:"2026-10-29T12:30:00.000Z",test:/\bus gross domestic product october 2026\b|^advance gdp q\/q$/i,
+  name:"Advance GDP q/q",forecast:"3.2%",previous:"2.2%",id:"us-gdp-advance-2026q3"},
+ {time:"2026-10-29T12:30:00.000Z",test:/\bus personal income and outlays \(pce\) october 2026\b|^core pce price index m\/m$/i,
+  name:"Core PCE Price Index m/m",forecast:"0.3%",previous:"0.2%",id:"us-core-pce-mm-2026sep",
+  beaMetric:true}
+];
+function alignTradingCalendarNames(event){
+ if(event.country!=="USD")return event;
+ const match=TRADING_OCT_2026.find(x=>x.time===event.date&&x.test.test(event.title));
+ if(!match)return event;
+ const result={...event,title:match.name,eventId:match.id,
+  sourceTitle:event.title,
+  // Explicitly record what is mapped: a BEA package contains many series.
+  metricLabel:match.beaMetric?"Core PCE ex-food-and-energy m/m":match.name};
+ if(match.beaMetric){
+  // A package-level PCE actual cannot be displayed as Core PCE.
+  result.actual="";
+  result.actualSource=null;
+  result.sourceUrl="https://www.bea.gov/data/personal-consumption-expenditures-price-index-excluding-food-and-energy";
+ }else if(match.name==="Advance GDP q/q"){
+  result.sourceUrl="https://www.bea.gov/news/schedule/full";
+ }
+ if(!result.forecast||!result.previous){
+  result.forecast=result.forecast||match.forecast;
+  result.previous=result.previous||match.previous;
+  result.forecastSnapshot="2026-10-27";
+  result.forecastSource="Admin-provided Forex Factory screenshot, 27 Oct 2026; not a live feed";
+ }
+ return result;
+}
 function sortUnique(rows){
  const seen=new Set();return rows.filter(r=>{
   if(!r)return false;const key=r.date+'|'+r.country+'|'+r.title.toLowerCase();
@@ -229,10 +267,10 @@ module.exports=async function handler(req,res){
  res.setHeader('X-Calendar-Source','Finance-Calendar-and-Official-BLS');
  if(!cache.rows.length)
    return res.status(503).json({error:'Verified calendar source temporarily unavailable',events:[],source:'Finance Calendar'});
- const events=addVerifiedFedEvents(cache.rows.filter(e=>Date.parse(e.date)>=now-DAY&&Date.parse(e.date)<=now+21*DAY).map(e=>({...e})));
+ const events=addVerifiedFedEvents(cache.rows.filter(e=>Date.parse(e.date)>=now-DAY&&Date.parse(e.date)<=now+21*DAY).map(e=>({...e}))).map(alignTradingCalendarNames);
  await officialOverlay(events,now);
  // Existing site expects an array; these are verified provider rows, not demo data.
  return res.status(200).json(events);
 };
 // Export only pure helpers for local deterministic testing; no network requests during import.
-module.exports._test={normalize,releaseInstant,reportKind,reportDate,officialActual,sortUnique,addVerifiedFedEvents};
+module.exports._test={normalize,releaseInstant,reportKind,reportDate,officialActual,sortUnique,addVerifiedFedEvents,alignTradingCalendarNames};
