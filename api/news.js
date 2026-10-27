@@ -125,6 +125,39 @@ TARGETED_GOOGLE_FEEDS.push(
   { name: 'Google News', category: 'US News', url: google('site:whitehouse.gov President Trump remarks live speech briefing') },
   { name: 'Google News', category: 'Central Banks', url: google('FOMC press conference Federal Reserve Chair Powell live remarks rate decision') }
 );
+// Dedicated published coverage of major calendar-type MARKET NEWS, not artificial upcoming events.
+// These are source-linked articles with actual publisher timestamps.
+TARGETED_GOOGLE_FEEDS.push(
+  { name: 'Google News', category: "Central Banks", url: google("FOMC press conference Powell says Federal Reserve decisions live statement") },
+  { name: 'Google News', category: "Central Banks", url: google("Federal Reserve FOMC statement released rate hold hike cut") },
+  { name: 'Google News', category: "Central Banks", url: google("Jerome Powell press conference remarks dollar gold bond yields") },
+  { name: 'Google News', category: "Central Banks", url: google("Fed FOMC meeting minutes published reaction") },
+  { name: 'Google News', category: "Central Banks", url: google("Fed speakers Waller Bowman Williams Bostic monetary policy remarks") },
+  { name: 'Google News', category: "Central Banks", url: google("ECB Lagarde press conference comments rates inflation") },
+  { name: 'Google News', category: "Central Banks", url: google("Bank of England governor Bailey press conference rate decision") },
+  { name: 'Google News', category: "Central Banks", url: google("Bank of Japan Ueda news conference monetary policy") },
+  { name: 'Google News', category: "Macro", url: google("US CPI inflation report released actual vs forecast") },
+  { name: 'Google News', category: "Macro", url: google("US core PCE price index report actual versus estimates") },
+  { name: 'Google News', category: "Macro", url: google("US PPI producer price report released actual data") },
+  { name: 'Google News', category: "Macro", url: google("US non farm payroll NFP jobs report released actual forecast") },
+  { name: 'Google News', category: "Macro", url: google("US unemployment rate data report labor market") },
+  { name: 'Google News', category: "Macro", url: google("US GDP advance estimate actual report BEA") },
+  { name: 'Google News', category: "Macro", url: google("US retail sales data released forecast dollar") },
+  { name: 'Google News', category: "Macro", url: google("weekly jobless claims release actual expected") },
+  { name: 'Google News', category: "Macro", url: google("ISM manufacturing services PMI released actual results") },
+  { name: 'Google News', category: "Macro", url: google("JOLTS job openings report released actual") },
+  { name: 'Google News', category: "Markets", url: google("EIA crude oil inventories weekly figures released") },
+  { name: 'Google News', category: "US News", url: google("President Donald Trump speech remarks today economy tariffs policy live") },
+  { name: 'Google News', category: "US News", url: google("Trump press conference White House remarks markets dollar gold") },
+  { name: 'Google News', category: "US News", url: google("White House press briefing statement today Trump tariffs") },
+  { name: 'Google News', category: "US News", url: google("Trump announcement sanctions trade China market reaction") },
+  { name: 'Google News', category: "US News", url: google("US Treasury Secretary speech economy tariff announcement") },
+  { name: 'Google News', category: "Gold", url: google("gold reaction to Fed Powell press conference inflation data") },
+  { name: 'Google News', category: "Forex", url: google("forex market moves after FOMC Powell rate decision") },
+  { name: 'Google News', category: "Forex", url: google("USD dollar yen euro react CPI NFP unemployment economic data") },
+  { name: 'Google News', category: "Markets", url: google("site:bls.gov/news.release/ CPI jobs report") },
+  { name: 'Google News', category: "Markets", url: google("site:bea.gov/news/ GDP PCE economic reports") }
+);
 FEEDS.push(...TARGETED_GOOGLE_FEEDS, ...PUBLIC_RSS_FEEDS);
 
 const MAX_ITEMS = 500;
