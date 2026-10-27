@@ -38,6 +38,33 @@ function normalize(row){
     actual,source:'Finance Calendar',sourceUrl:nonempty(row.source_url||row.url,500),
     status:nonempty(row.status,30),actualSource:actual?'Finance Calendar':null};
 }
+// Additional distinct releases verified against the Federal Reserve's official
+// October 2026 calendar. Do not invent companion events for unverified meetings.
+const VERIFIED_FOMC_COMPANIONS=[
+ {decision:"2026-10-28T18:00:00.000Z",press:"2026-10-28T18:30:00.000Z",
+  url:"https://www.federalreserve.gov/newsevents/2026-october.htm"}
+];
+function addVerifiedFedEvents(rows){
+ const merged=rows.slice();
+ for(const meeting of VERIFIED_FOMC_COMPANIONS){
+  const rate=rows.find(row=>row.country==='USD' && row.impact==='High' &&
+   row.status==='confirmed' && Date.parse(row.date)===Date.parse(meeting.decision) &&
+   /(?:FOMC|Federal Funds Rate|Fed Rate Decision)/i.test(row.title) &&
+   /(?:Rate Decision|Federal Funds Rate|Interest Rate Decision)/i.test(row.title));
+  if(!rate)continue;
+  const companions=[
+   {title:'FOMC Statement',date:meeting.decision,pattern:/\bFOMC Statement\b|Federal Open Market Committee Statement/i},
+   {title:'FOMC Press Conference',date:meeting.press,pattern:/\bFOMC Press Conference\b|\bFed Press Conference\b/i}
+  ];
+  for(const c of companions){
+   if(merged.some(row=>row.country==='USD'&&row.date===c.date&&c.pattern.test(row.title)))continue;
+   merged.push({date:c.date,title:c.title,country:'USD',impact:'High',
+    forecast:'',previous:'',actual:'',source:'Federal Reserve',
+    sourceUrl:meeting.url,status:'confirmed',actualSource:null});
+  }
+ }
+ return sortUnique(merged);
+}
 function sortUnique(rows){
  const seen=new Set();return rows.filter(r=>{
   if(!r)return false;const key=r.date+'|'+r.country+'|'+r.title.toLowerCase();
@@ -202,10 +229,10 @@ module.exports=async function handler(req,res){
  res.setHeader('X-Calendar-Source','Finance-Calendar-and-Official-BLS');
  if(!cache.rows.length)
    return res.status(503).json({error:'Verified calendar source temporarily unavailable',events:[],source:'Finance Calendar'});
- const events=cache.rows.filter(e=>Date.parse(e.date)>=now-DAY&&Date.parse(e.date)<=now+21*DAY).map(e=>({...e}));
+ const events=addVerifiedFedEvents(cache.rows.filter(e=>Date.parse(e.date)>=now-DAY&&Date.parse(e.date)<=now+21*DAY).map(e=>({...e})));
  await officialOverlay(events,now);
  // Existing site expects an array; these are verified provider rows, not demo data.
  return res.status(200).json(events);
 };
 // Export only pure helpers for local deterministic testing; no network requests during import.
-module.exports._test={normalize,releaseInstant,reportKind,reportDate,officialActual,sortUnique};
+module.exports._test={normalize,releaseInstant,reportKind,reportDate,officialActual,sortUnique,addVerifiedFedEvents};
