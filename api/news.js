@@ -118,6 +118,13 @@ const PUBLIC_RSS_FEEDS = [
   { name: "ECB", category: "Central Banks", url: "https://www.ecb.int/rss/press.html" },
   { name: "Yahoo News", category: "US News", url: "https://news.yahoo.com/rss/topstories" }
 ];
+// Specifically surface announced speeches and live policy events as news coverage.
+// Search results are published articles, not independently verified event schedules.
+TARGETED_GOOGLE_FEEDS.push(
+  { name: 'Google News', category: 'US News', url: google('Donald Trump scheduled speech today tomorrow White House official remarks') },
+  { name: 'Google News', category: 'US News', url: google('site:whitehouse.gov President Trump remarks live speech briefing') },
+  { name: 'Google News', category: 'Central Banks', url: google('FOMC press conference Federal Reserve Chair Powell live remarks rate decision') }
+);
 FEEDS.push(...TARGETED_GOOGLE_FEEDS, ...PUBLIC_RSS_FEEDS);
 
 const MAX_ITEMS = 500;
