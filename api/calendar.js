@@ -109,6 +109,13 @@ function percent(text,pattern){
 }
 function officialActual(title,kind,body){
  const t=title.toLowerCase();
+ // Generic publisher titles often omit the metric's m/m versus y/y dimension.
+ // Return both explicitly labelled rather than assigning the wrong Actual.
+ if((kind==='cpi'||kind==='ppi')&&!/m\/m|y\/y|month.over.month|year.over.year|12.month|annual/.test(t)&&!/(?:core|ex.?food)/.test(t)){
+  const mom=officialActual(title+' m/m',kind,body);
+  const yoy=officialActual(title+' y/y',kind,body);
+  return [mom&&'m/m '+mom,yoy&&'y/y '+yoy].filter(Boolean).join(' · ');
+ }
  if(kind==='cpi'){
   if(/\bcore\b/.test(t)){
    if(/y\/y|year.over.year|annual|12.month/.test(t))
