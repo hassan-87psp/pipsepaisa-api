@@ -238,9 +238,9 @@ function gradeHeadline(title) {
     /\b(?:interven(?:e|es|tion)|decisive steps|prepared to take decisive|ready to act|emergency measures|buy yen|sell yen)\b/.test(t);
   const talks=/\b(?:negotiat\w*|peace talks|in talks|peace effort|diplomatic efforts|proposed|proposal|draft ceasefire|discuss\w*)\b/.test(t);
   const war=/\b(?:iran|israel|russia|ukraine|taiwan|middle east|red sea|black sea|hormuz|yemen|houthi|military|defen[cs]e minister|defen[cs]e ministry)\b/.test(t);
-  const attack=/\b(?:strikes?|attacks?|missiles?|airstrikes?|drones?|invasion|cargo ship|bombs?|blockade|escalat\w*|sinks?|sunk|shot down|ceasefire|war)\b/.test(t);
+  const attack=/\b(?:strikes?|attack(?:s|ed)?|missiles?|airstrikes?|drones?|invasion|cargo ship|bombs?|blockade|escalat\w*|sinks?|sunk|shot down|ceasefire|war)\b/.test(t);
   const oil=/\b(?:oil|crude|brent|wti|opec|refiner|refinery|hormuz|oil tanker)\b/.test(t);
-  const oilDisruption=/\b(?:cuts? (?:production|output|exports|supply)|raises? (?:production|output)|halts? (?:exports|shipping|production)|disrupt\w*|blockade|sanction|attack|strikes?|explosion|output decision)\b/.test(t);
+  const oilDisruption=/\b(?:cuts? (?:production|output|exports|supply)|raises? (?:production|output)|halts? (?:exports|shipping|production)|disrupt\w*|blockade|sanction|attack(?:s|ed)?|strikes?|explosion|output decision)\b/.test(t);
   const policy=/\b(?:trump|white house|us treasury|u\.s\. treasury|treasury secretary|us president)\b/.test(t);
   const trade=/\b(?:tariffs?|sanctions?|trade deal|import duties|export controls?|trade restriction|trade ban)\b/.test(t);
   const enacted=/\b(?:announces?|announced|orders?|ordered|imposes?|imposed|signed|signs?|effective|approved|approves?|halts?|halted|suspends?|suspended|cuts?|raises?|lifts?|deal reached|agrees? to)\b/.test(t);
