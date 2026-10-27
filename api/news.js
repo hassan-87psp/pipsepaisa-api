@@ -158,6 +158,23 @@ TARGETED_GOOGLE_FEEDS.push(
   { name: 'Google News', category: "Markets", url: google("site:bls.gov/news.release/ CPI jobs report") },
   { name: 'Google News', category: "Markets", url: google("site:bea.gov/news/ GDP PCE economic reports") }
 );
+TARGETED_GOOGLE_FEEDS.push(
+  { name:'Google News', category:"Forex", url:google("Japan finance minister yen intervention") },
+  { name:'Google News', category:"Forex", url:google("Katayama foreign exchange market intervention") },
+  { name:'Google News', category:"Forex", url:google("BOJ governor Japan yen live remarks") },
+  { name:'Google News', category:"Central Banks", url:google("FOMC statement Fed press conference") },
+  { name:'Google News', category:"Central Banks", url:google("Powell Federal Reserve officials remarks") },
+  { name:'Google News', category:"Geopolitics", url:google("Russia Ukraine cargo ship Black Sea strikes") },
+  { name:'Google News', category:"Geopolitics", url:google("Iran Israel ceasefire strike breaking") },
+  { name:'Google News', category:"Geopolitics", url:google("shipping Strait of Hormuz oil tanker attacks") },
+  { name:'Google News', category:"US News", url:google("Trump announces tariffs sanctions") },
+  { name:'Google News', category:"US News", url:google("White House official tariff trade policy announcements") },
+  { name:'Google News', category:"Markets", url:google("OPEC oil production output decision") },
+  { name:'Google News', category:"Macro", url:google("CPI data released inflation actual forecast") },
+  { name:'Google News', category:"Macro", url:google("NFP nonfarm payroll jobs released") },
+  { name:'Google News', category:"Forex", url:google("site:forexlive.com Japan forex yen intervention") },
+  { name:'Google News', category:"Forex", url:google("site:fxstreet.com/news Fed Powell USDJPY EURUSD") }
+);
 FEEDS.push(...TARGETED_GOOGLE_FEEDS, ...PUBLIC_RSS_FEEDS);
 
 const MAX_ITEMS = 500;
