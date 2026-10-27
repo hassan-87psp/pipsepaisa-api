@@ -203,30 +203,59 @@ function classify(title, fallback) {
   return fallback;
 }
 
-// Market Focus means editorial relevance for forex/macro trading. It is NOT
-// verified price impact, a trading recommendation, or a severity prediction.
-// Use the article headline only; never infer facts that the publisher didn't state.
+// Editorial triage, NOT verified price impact or a guaranteed market move.
+// HOT = concrete potentially high-volatility macro, geopolitical, trade or intervention story.
+// WARM = relevant preview, commentary or market developments.
+// COLD = unrelated corporate or routine local news. Published headline text is the only input.
+function gradeHeadline(title) {
+  const t=String(title||'').toLowerCase().replace(/\s+/g,' ').trim();
+  const out=(level,topic,reason)=>({level,topic,reason});
+  if(!t)return out('cold',null,'No headline');
+  if(/\b(?:22k|24k|18k|jewell?ery|per gram|per tola|gold rate in (?:hyderabad|delhi|mumbai|chennai))\b/.test(t))
+    return out('cold',null,'Retail jewellery news');
+  const preview=/\b(?:ahead of|preview|survey|poll|week ahead|next week|this week|expected to|expects? (?:to|one more|another)|likely to|may |might |could |before the|forecast|analysts? (?:say|expect)|due next|set to)\b/.test(t);
+  const exOfficial=/\b(?:former|ex-|retired)\b/.test(t);
+  const actor=/\b(?:fed|fomc|federal reserve|powell|ecb|lagarde|bank of england|boe|boj|bank of japan|rba|rbnz|snb|boc|bank of canada)\b/.test(t);
+  const rate=/\b(?:rates?|interest rate|policy rate|federal funds|monetary policy)\b/.test(t);
+  const intervention=/\b(?:yen|jpy|fx market|forex market|finance minister|fin min|katayama|japan|boj)\b/.test(t) &&
+    /\b(?:interven(?:e|es|tion)|decisive steps|prepared to take decisive|ready to act|emergency measures|buy yen|sell yen)\b/.test(t);
+  const war=/\b(?:iran|israel|russia|ukraine|taiwan|middle east|red sea|black sea|hormuz|yemen|houthi|military|defen[cs]e minister|defen[cs]e ministry)\b/.test(t);
+  const attack=/\b(?:strikes?|attacks?|missiles?|airstrikes?|drones?|invasion|cargo ship|bombs?|blockade|escalat\w*|sinks?|sunk|shot down|ceasefire|war)\b/.test(t);
+  const oil=/\b(?:oil|crude|brent|wti|opec|refiner|refinery|hormuz|oil tanker)\b/.test(t);
+  const oilDisruption=/\b(?:cuts? (?:production|output|exports|supply)|raises? (?:production|output)|halts? (?:exports|shipping|production)|disrupt\w*|blockade|sanction|attack|strikes?|explosion|output decision)\b/.test(t);
+  const policy=/\b(?:trump|white house|us treasury|u\.s\. treasury|treasury secretary|us president)\b/.test(t);
+  const trade=/\b(?:tariffs?|sanctions?|trade deal|import duties|export controls?|trade restriction|trade ban)\b/.test(t);
+  const enacted=/\b(?:announces?|announced|orders?|ordered|imposes?|imposed|signed|signs?|effective|approved|approves?|halts?|halted|suspends?|suspended|cuts?|raises?|lifts?|deal reached|agrees? to)\b/.test(t);
+  const macro=/\b(?:cpi|consumer price index|ppi|producer price index|core pce|nonfarm payrolls?|nfp|unemployment rate|jobless claims|us gdp|u\.s\. gdp|us retail sales|u\.s\. retail sales|federal funds rate)\b/.test(t);
+  const outcome=/\b(?:rises?|rose|falls?|fell|drops?|jump(?:s|ed)?|surges?|released?|report(?:s|ed)?|printed|prints?|surpris(?:e|es|ed)|beats?|misses?|to \d|at \d)\b/.test(t) &&
+    (/\d/.test(t)||/\b(?:released|surpris|beats?|misses?)\b/.test(t));
+  const rateAction=/\b(?:cuts?|hikes?|raises?|holds?|held|leaves?|left|unchanged|decides?|decision|votes?|emergency|unexpectedly)\b/.test(t);
+  const market=/\b(?:fx|forex|currency|currencies|dollar|usd|dxy|yen|jpy|eurusd|gbpusd|usdjpy|usdcad|audusd|nzdusd|usdchf|eur\/usd|gbp\/usd|gold|bullion|silver|xauusd|xagusd|oil|crude|brent|wti|opec|bond yields?|treasury yields?|stock markets?)\b/.test(t);
+  const moves=/\b(?:rises?|falls?|climbs?|drops?|surges?|slumps?|jumps?|slides?|weakens?|strengthens?|rebounds?|trades?|hits?|holds?|eases?|retreats?|rall(?:y|ies)|plunges?|sinks?|gains?|outlook|pressure|volatility|prices?)\b/.test(t);
+  if(intervention&&!preview)return out('hot','FX Intervention','Official FX market intervention warning');
+  if(war&&attack&&!preview)return out('hot','Geopolitics','Reported war or shipping-security development');
+  if(oil&&oilDisruption&&!preview)return out('hot','Oil Supply','Reported supply disruption or oil-policy action');
+  if(policy&&trade&&enacted&&!preview)return out('hot','US Policy','Reported enacted or announced trade measure');
+  if(actor&&rate&&rateAction&&!preview&&!exOfficial)return out('hot','Central Banks','Reported monetary policy rate decision');
+  if(macro&&outcome&&!preview)return out('hot','Economic Data','Major economic data reported');
+  if(actor&&/\b(?:emergency decision|unscheduled intervention|surprise announcement)\b/.test(t))
+    return out('hot','Central Banks','Reported unexpected central bank action');
+  if(policy&&trade)return out('warm','US Policy','Trade negotiations or policy commentary');
+  if(actor&&(rate||/\b(?:statement|press conference|remarks|speaks?|speech|warning|meeting|minutes|inflation|policy)\b/.test(t)))
+    return out('warm','Central Banks','Central bank comments or meeting preview');
+  if(macro)return out('warm','Economic Data','Economic calendar/report coverage');
+  if(intervention)return out('warm','FX Intervention','Currency intervention commentary');
+  if(war&&/\b(?:war|strik|conflict|sanction|diplomatic|ceasefire|negotiat|peace|missile|attack|security)\w*\b/.test(t))
+    return out('warm','Geopolitics','Geopolitical reports or negotiations');
+  if(oil&&/\b(?:supply|output|production|oil price|inventory|crude|refin|shipping|opec|exports?|imports?|demand)\w*\b/.test(t))
+    return out('warm','Oil & Energy','Energy supply or pricing report');
+  if(market&&(moves||/\b(?:fed|ecb|boj|boe|rba|rbnz|inflation|policy|cpi|rate|intervention|bond yields?)\b/.test(t)))
+    return out('warm','Forex & Commodities','Market pricing, commentary or preview');
+  return out('cold',null,'Routine or unrelated news');
+}
 function marketFocusTopic(title) {
-  const t=String(title||'').toLowerCase();
-  if (!t.trim()) return null;
-  if (/\b(?:22k|24k|jewellery|jewelry|per gram|per tola|gold rate in hyderabad|gold rate in delhi|gold rate in mumbai)\b/.test(t)) return null;
-  if (/\b(?:fomc|fed|federal reserve|powell|fed chair|ecb|lagarde|boe|bank of england|boj|bank of japan|snb|rba|rbnz)\b/.test(t) &&
-      /\b(?:rate|policy|hike|cut|hold|meeting|minutes|statement|press conference|speech|speaks|remarks|says|inflation|decision|outlook|testimony|warning)\b/.test(t)) return 'Central Banks';
-  if (/\b(?:trump|white house|president of the united states|us treasury|treasury secretary)\b/.test(t) &&
-      /\b(?:tariff|trade|sanction|econom|dollar|fed|rate|market|oil|export|import|china|speech|remarks|announce|executive order|address|policy|tax|budget)\w*\b/.test(t)) return 'US Policy';
-  if (/\b(?:nfp|nonfarm|payrolls|jobless claims|unemployment|consumer price index|cpi|producer price index|ppi|pce|retail sales|job openings|jolts|ism|pmi|gdp)\b/.test(t) &&
-      /\b(?:us|u\.s\.|united states|federal|american|jobs|data|report|released|inflation|fed|dollar|rate|economy|payroll|forecast|markets)\b/.test(t)) return 'Economic Data';
-  if (/\b(?:xauusd|xau\/usd|gold|bullion|silver|precious metals|xagusd)\b/.test(t) &&
-      /\b(?:spot|futures|prices?|rises?|falls?|jumps?|slips?|slides?|surges?|drops?|market|fed|dollar|yields?|rates?|inflation|trading|record|hits?|high|low|outlook)\b/.test(t)) return 'Gold & Silver';
-  if (/\b(?:eurusd|gbpusd|usdjpy|usdcad|audusd|nzdusd|usdchf|eur\/usd|gbp\/usd|usd\/jpy|forex|fx market|currency|currencies|us dollar|dxy|yen|euro|pound sterling)\b/.test(t) &&
-      /\b(?:rises?|falls?|climbs?|drops?|surges?|slips?|weakens?|strengthens?|hits?|trades?|rates?|fed|ecb|boj|boe|inflation|data|yields?|policy|market|tariff|decision|intervention|outlook)\b/.test(t)) return 'Forex';
-  if (/\b(?:wti|brent|crude oil|opec|oil prices?|oil supply|strait of hormuz|oil inventories)\b/.test(t) &&
-      /\b(?:rises?|falls?|surges?|slumps?|supply|output|production|sanction|inventory|market|price|war|exports?|shipping|cut|hike|record|demand|ceasefire)\b/.test(t)) return 'Oil & Energy';
-  if (/\b(?:iran|israel|russia|ukraine|taiwan|middle east|red sea|hormuz)\b/.test(t) &&
-      /\b(?:war|attack|missile|ceasefire|sanction|invasion|strike|shipping|conflict|oil|escalat|deal|nuclear|troops|peace talks|diplomatic)\w*\b/.test(t)) return 'Geopolitics';
-  if (/\b(?:bitcoin|btc|ethereum|ether|crypto)\b/.test(t) &&
-      /\b(?:price|futures|spot|etf|regulation|sec|market|rises?|falls?|surges?|drops?|record|fed|liquidation)\b/.test(t)) return 'Crypto';
-  return null;
+  const g=gradeHeadline(title);
+  return g.level==='cold'?null:g.topic;
 }
 
 function parseFeed(xml, feed, now) {
@@ -242,10 +271,11 @@ function parseFeed(xml, feed, now) {
     const suffix = title.match(/\s+-\s+([^–-]{2,55})$/);
     const source = feed.name === 'Google News' ? (origin || (suffix && suffix[1]) || 'Google News') : feed.name;
     const desc = clean(tag(block, 'description')).slice(0, 220);
-    const focusTopic=marketFocusTopic(title);
+    const grade=gradeHeadline(title);
     results.push({ title, desc, date: new Date(time).toISOString(), link, url: link, source,
       category: classify(title, feed.category), sourceUrl: feed.url,
-      marketFocus:Boolean(focusTopic), focusTopic:focusTopic||null });
+      marketFocus:grade.level!=='cold', focusTopic:grade.topic,
+      heat:grade.level, heatReason:grade.reason });
   }
   return results;
 }
