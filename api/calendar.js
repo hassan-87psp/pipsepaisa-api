@@ -65,7 +65,7 @@ function nameEvent(row){
  }
  else if(e.country==='USD'&&(e.seriesCode==='us-gdp'||/US Gross Domestic Product/i.test(e.title))){
    e.sourceTitle=e.title;
-   const stage=e.releaseStage.toLowerCase();
+   const stage=String(e.releaseStage||'').toLowerCase();
    // Never call GDP 'Advance' unless stage is explicitly provided.
    e.title=stage==='advance'?'Advance GDP q/q':stage==='second'?'Prelim GDP q/q':
     stage==='third'?'Final GDP q/q':'GDP q/q';
