@@ -202,6 +202,33 @@ function classify(title, fallback) {
   if (/\b(stocks|nasdaq|s&p|dow jones|shares|treasury|oil|bond|yields)\b/.test(t)) return 'Markets';
   return fallback;
 }
+
+// Market Focus means editorial relevance for forex/macro trading. It is NOT
+// verified price impact, a trading recommendation, or a severity prediction.
+// Use the article headline only; never infer facts that the publisher didn't state.
+function marketFocusTopic(title) {
+  const t=String(title||'').toLowerCase();
+  if (!t.trim()) return null;
+  if (/\b(?:22k|24k|jewellery|jewelry|per gram|per tola|gold rate in hyderabad|gold rate in delhi|gold rate in mumbai)\b/.test(t)) return null;
+  if (/\b(?:fomc|federal reserve|powell|fed chair|ecb|lagarde|boe|bank of england|boj|bank of japan|snb|rba|rbnz)\b/.test(t) &&
+      /\b(?:rate|policy|hike|cut|hold|meeting|minutes|statement|press conference|speech|speaks|remarks|says|inflation|decision|outlook|testimony|warning)\b/.test(t)) return 'Central Banks';
+  if (/\b(?:trump|white house|president of the united states|us treasury|treasury secretary)\b/.test(t) &&
+      /\b(?:tariff|trade|sanction|econom|dollar|fed|rate|market|oil|export|import|china|speech|remarks|announce|executive order|address|policy|tax|budget)\w*\b/.test(t)) return 'US Policy';
+  if (/\b(?:nfp|nonfarm|payrolls|jobless claims|unemployment|consumer price index|cpi|producer price index|ppi|pce|retail sales|job openings|jolts|ism|pmi|gdp)\b/.test(t) &&
+      /\b(?:us|u\.s\.|united states|federal|american|jobs|data|report|released|inflation|fed|dollar|rate|economy|payroll|forecast|markets)\b/.test(t)) return 'Economic Data';
+  if (/\b(?:xauusd|xau\/usd|gold|bullion|silver|precious metals|xagusd)\b/.test(t) &&
+      /\b(?:spot|futures|prices?|rises?|falls?|jumps?|slips?|slides?|surges?|drops?|market|fed|dollar|yields?|rates?|inflation|trading|record|hits?|high|low|outlook)\b/.test(t)) return 'Gold & Silver';
+  if (/\b(?:eurusd|gbpusd|usdjpy|usdcad|audusd|nzdusd|usdchf|eur\/usd|gbp\/usd|usd\/jpy|forex|fx market|currency|currencies|us dollar|dxy|yen|euro|pound sterling)\b/.test(t) &&
+      /\b(?:rises?|falls?|climbs?|drops?|surges?|slips?|weakens?|strengthens?|hits?|trades?|rates?|fed|ecb|boj|boe|inflation|data|yields?|policy|market|tariff|decision|intervention|outlook)\b/.test(t)) return 'Forex';
+  if (/\b(?:wti|brent|crude oil|opec|oil prices?|oil supply|strait of hormuz|oil inventories)\b/.test(t) &&
+      /\b(?:rises?|falls?|surges?|slumps?|supply|output|production|sanction|inventory|market|price|war|exports?|shipping|cut|hike|record|demand|ceasefire)\b/.test(t)) return 'Oil & Energy';
+  if (/\b(?:iran|israel|russia|ukraine|taiwan|middle east|red sea|hormuz)\b/.test(t) &&
+      /\b(?:war|attack|missile|ceasefire|sanction|invasion|strike|shipping|conflict|oil|escalat|deal|nuclear|troops|peace talks|diplomatic)\w*\b/.test(t)) return 'Geopolitics';
+  if (/\b(?:bitcoin|btc|ethereum|ether|crypto)\b/.test(t) &&
+      /\b(?:price|futures|spot|etf|regulation|sec|market|rises?|falls?|surges?|drops?|record|fed|liquidation)\b/.test(t)) return 'Crypto';
+  return null;
+}
+
 function parseFeed(xml, feed, now) {
   const entries = xml.match(/<item(?:\s[^>]*)?>[\s\S]*?<\/item>/gi) || xml.match(/<entry(?:\s[^>]*)?>[\s\S]*?<\/entry>/gi) || [];
   const results = [];
@@ -215,40 +242,31 @@ function parseFeed(xml, feed, now) {
     const suffix = title.match(/\s+-\s+([^–-]{2,55})$/);
     const source = feed.name === 'Google News' ? (origin || (suffix && suffix[1]) || 'Google News') : feed.name;
     const desc = clean(tag(block, 'description')).slice(0, 220);
+    const focusTopic=marketFocusTopic(title);
     results.push({ title, desc, date: new Date(time).toISOString(), link, url: link, source,
-      category: classify(title, feed.category), sourceUrl: feed.url });
+      category: classify(title, feed.category), sourceUrl: feed.url,
+      marketFocus:Boolean(focusTopic), focusTopic:focusTopic||null });
   }
   return results;
 }
 function dedupe(items) {
   const seen = new Set(), all = [];
-  for (const item of items.sort((a,b) => Date.parse(b.date)-Date.parse(a.date))) {
-    const key = item.title.toLowerCase().replace(/\s+-\s+[^–-]{2,55}$/, '')
-      .replace(/[^a-z0-9]+/g, ' ').trim();
-    if (!key || seen.has(key)) continue;
-    seen.add(key); all.push(item);
+  for (const item of items.sort((a,b)=>Date.parse(b.date)-Date.parse(a.date))) {
+    const key=item.title.toLowerCase().replace(/\s+-\s+[^–-]{2,55}$/, '')
+      .replace(/[^a-z0-9]+/g,' ').trim();
+    if(!key||seen.has(key))continue;
+    seen.add(key);all.push(item);
   }
-  if (all.length <= MAX_ITEMS) return all;
-  // Keep the latest news first, while reserving room for key macro / political headlines.
-  // This avoids missing White House / Gold when general market feeds are unusually busy.
-  const chosen = new Set();
-  const reserve = [
-    {max:45, test:i=>/\b(?:trump|white house|president|tariff|executive order|treasury secretary)\b/i.test(i.title)},
-    {max:35, test:i=>/\b(?:gold|silver|xauusd|fomc|fed|powell|rate decision)\b/i.test(i.title)},
-    {max:30, test:i=>/\b(?:cpi|nfp|payroll|ppi|pce|inflation|gdp|unemployment|oil|opec)\b/i.test(i.title)}
-  ];
-  for (const group of reserve) {
-    let num = 0;
-    for (const item of all) {
-      if (num >= group.max) break;
-      if (group.test(item) && !chosen.has(item)) { chosen.add(item); num++; }
-    }
+  if(all.length<=MAX_ITEMS)return all;
+  // Reserve enough room so crowded generic news cannot displace fresh
+  // trading-relevant headlines. The All tab retains the remaining newest items.
+  const relevant=all.filter(x=>x.marketFocus);
+  const selected=new Set(relevant.slice(0,Math.min(300,MAX_ITEMS)));
+  for(const item of all) {
+    if(selected.size>=MAX_ITEMS)break;
+    selected.add(item);
   }
-  for (const item of all) {
-    if (chosen.size >= MAX_ITEMS) break;
-    chosen.add(item);
-  }
-  return Array.from(chosen).sort((a,b)=>Date.parse(b.date)-Date.parse(a.date));
+  return Array.from(selected).sort((a,b)=>Date.parse(b.date)-Date.parse(a.date));
 }
 async function readFeed(feed, now) {
   const start = Date.now();
@@ -308,7 +326,8 @@ module.exports = async function handler(req, res) {
     res.setHeader('X-News-Sources-OK', String(cache.sourcesOk));
     res.setHeader('X-News-Cache', now - cache.at < CACHE_MS ? 'FRESH' : 'STALE');
     return res.status(200).json({ success: filtered.length > 0, items: filtered.slice(0, limit),
-      total: filtered.length, configured: FEEDS.length, sources: cache.sourcesOk, updatedAt: cache.at ? new Date(cache.at).toISOString() : null,
+      total: filtered.length, focusCount: filtered.filter(x=>x.marketFocus).length,
+      configured: FEEDS.length, sources: cache.sourcesOk, updatedAt: cache.at ? new Date(cache.at).toISOString() : null,
       ...(filtered.length ? {} : { error: 'News feeds temporarily unavailable' }) });
   } catch (e) {
     return res.status(200).json({ success: cache.items.length > 0, items: cache.items,
