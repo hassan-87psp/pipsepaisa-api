@@ -49,6 +49,20 @@ async function main(){
   ).map(e=>({date:e.date,country:e.country,title:e.title,impact:e.impact,
     forecast:e.forecast||'',previous:e.previous||'',actual:e.actual||'',
     source:e.source,actualSource:e.actualSource||'',status:e.status}));
+  // Check live deployment of source-confirmed date-locked released metrics.
+  // This also catches a Vercel deployment that passes CI but has not reached
+  // the production route or a CDN still serving stale Actual placeholders.
+  const expectedRows=require('../api/calendar.js')._test.applyPrimaryReleasedActuals(
+    events.map(e=>({...e,actual:''})),Date.now());
+  report.verifiedSourceActualAudit=expectedRows.filter(e=>e.actual&&
+    (e.actualSource==='Australian Bureau of Statistics'||e.actualSource==='Reserve Bank of New Zealand'))
+   .map(e=>{
+     const live=events.find(x=>x.date===e.date&&x.country===e.country&&x.title===e.title);
+     return {date:e.date,country:e.country,title:e.title,expected:e.actual,
+       site:live?.actual||'',source:e.actualSource,ok:live?.actual===e.actual};
+   });
+  if(report.verifiedSourceActualAudit.some(x=>!x.ok))
+    report.warnings.push('Official published Actual values missing from live site calendar');
   if(report.calendarQuality.futureWithActual.length)report.warnings.push('Calendar has future events with premature Actual');
   if(report.calendarQuality.duplicateEventKeys)report.warnings.push('Calendar includes duplicate same-title/currency/release-time entries');
   if(!events.length)report.warnings.push('Calendar has zero verified entries');
@@ -206,6 +220,8 @@ async function main(){
   critical.push('All live news sources or headlines disappeared');
  if(report.news && report.news.bloombergConfigured>0 && report.news.bloombergHeadlines===0)
   critical.push('Bloomberg direct RSS headlines are missing again');
+ if(report.verifiedSourceActualAudit?.some(x=>!x.ok))
+  critical.push('Official published Actual snapshots missing from production calendar');
  if(report.calendarQuality?.futureWithActual.length||report.calendarQuality?.duplicateEventKeys||report.calendarQuality?.unknownImpact)
   critical.push('Calendar has premature Actuals, duplicates or invalid impact labels');
  for(const field of ['previousParity','actualParity']){
