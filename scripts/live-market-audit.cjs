@@ -50,10 +50,10 @@ async function main(){
  try{
   const r=await fetch('https://www.bloomberg.com/feeds/news.rss',{signal:AbortSignal.timeout(12000)});
   const xml=await r.text();
-  const first=(xml.match(/<item(?:\\s[^>]*)?>[\\s\\S]*?<\\/item>/i)||[])[0]||'';
-  const rawDate=(first.match(/<pubDate>([\\s\\S]*?)<\\/pubDate>/i)||[])[1]||'';
+  const first=(xml.split('<item>')[1]||'').split('</item>')[0]||'';
+  const rawDate=(first.split('<pubDate>')[1]||'').split('</pubDate>')[0]||'';
   report.bloombergPublisherDiagnostic={http:r.status,xmlBytes:xml.length,
-   rawItems:(xml.match(/<item(?:\\s[^>]*)?>/gi)||[]).length,
+   rawItems:Math.max(0,xml.split('<item>').length-1),
    firstDate:rawDate.slice(0,90),firstDateValid:Number.isFinite(Date.parse(rawDate))};
  }catch(e){report.bloombergPublisherDiagnostic={error:String(e.message||e)};}
  console.log('PIPSEPAISA_LIVE_MARKET_AUDIT '+JSON.stringify(report,null,2));
