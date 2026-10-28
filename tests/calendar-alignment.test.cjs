@@ -202,3 +202,42 @@ test('same release time with DIFFERENT economic metric does not borrow Forex Fac
  assert.equal(result.find(x=>x.title==='Advance GDP q/q').forecast,'3.2%');
  assert.equal(result.find(x=>x.title==='Core PCE Price Index m/m').forecast,'0.3%');
 });
+
+test('uses official ECB timing and removes only redundant empty generic rate decision',()=>{
+ const t=require('../api/calendar.js')._test;
+ const broad={date:'2026-10-29T12:45:00.000Z',country:'EUR',
+   title:'ECB Rate Decision October 2026',source:'Finance Calendar',
+   impact:'High',status:'confirmed',forecast:'',previous:'',actual:''};
+ const ff=t.normalizeFF({date:'2026-10-29T13:15:00.000Z',country:'EUR',
+   title:'Main Refinancing Rate',impact:'High',forecast:'2.65%',previous:'2.65%'});
+ const out=t.applyFFWeekly([broad],[ff]);
+ assert.equal(out.length,1);
+ assert.equal(out[0].title,'Main Refinancing Rate');
+ assert.equal(out[0].date,'2026-10-29T13:15:00.000Z');
+ assert.equal(out[0].forecast,'2.65%');
+ assert.equal(out[0].source,'Forex Factory');
+ assert.equal(t.applyFFWeekly([broad],[]).length,1,'keep generic fallback if FF absent');
+});
+test('Bank of Canada removes empty generic placeholder but retains official data and separate events',()=>{
+ const t=require('../api/calendar.js')._test;
+ const date='2026-10-28T13:45:00.000Z';
+ const ff={date,country:'CAD',title:'Overnight Rate',forecast:'2.50%',previous:'2.25%',impact:'High'};
+ const empty={date,country:'CAD',title:'Bank of Canada Rate Decision October 2026',
+   forecast:'',previous:'',actual:''};
+ const out=t.applyFFWeekly([empty,{...empty,title:'BOC Rate Statement'}],[ff]);
+ assert.equal(out.length,2);
+ assert.ok(out.some(x=>x.title==='Overnight Rate'));
+ assert.ok(out.some(x=>x.title==='BOC Rate Statement'));
+ const withData=t.applyFFWeekly([{...empty,actual:'2.25%'}],[ff]);
+ assert.equal(withData.length,2,'never suppress a provider row that contains published Actual');
+ const wrongCountry=t.applyFFWeekly([{...empty,country:'USD'}],[ff]);
+ assert.equal(wrongCountry.length,2,'do not merge unrelated countries');
+});
+test('no generic central bank event is removed when release dates are more than one hour apart',()=>{
+ const t=require('../api/calendar.js')._test;
+ const broad={date:'2026-10-29T11:30:00.000Z',country:'EUR',title:'ECB Rate Decision October 2026',
+   forecast:'',previous:'',actual:''};
+ const ff={date:'2026-10-29T13:15:00.000Z',country:'EUR',title:'Main Refinancing Rate',forecast:'2.65%'};
+ const result=t.applyFFWeekly([broad],[ff]);
+ assert.equal(result.length,2);
+});
