@@ -53,7 +53,8 @@ function normalize(row){
     actual,unit,source:'Finance Calendar',sourceUrl:nonempty(row.source_url||row.url,500),
     status:nonempty(row.status,30),actualSource:actual?'Finance Calendar':null,
     seriesCode:nonempty(row.series_code,90),eventId:nonempty(row.id,140),
-    releaseStage:nonempty(row.release_stage,40),period:nonempty(row.period,60)};
+    releaseStage:nonempty(row.release_stage,40),period:nonempty(row.period,60),
+    timeRole:nonempty(row.time_role,40),lastVerifiedAt:nonempty(row.last_verified_at,60)};
 }
 // Recurring automatic labels + confirmed accompanying metrics. No fixed dates.
 // Rules are conditional on known source series and confirmed release timestamp.
@@ -130,15 +131,15 @@ function addVerifiedFedEvents(rows){return addRecurringCompanions(rows);}
 // Trading-calendar names identify SPECIFIC metrics, not the broad release package.
 // Match the official Oct 2026 Fed/BEA times; never infer a Core PCE reading
 // from an unqualified headline PCE result.
-// This dated snapshot was supplied by the admin on 27 October 2026. It is NOT
-// a live provider consensus and must be labelled as a historical snapshot.
+// These mappings only distinguish specific metrics in official release packages.
+// Forecasts and previous values must come from a published source, never this table.
 const TRADING_OCT_2026=[
  {time:"2026-10-28T18:00:00.000Z",test:/\b(?:fomc|fed)\b.*rate decision|federal funds rate/i,
-  name:"Federal Funds Rate",forecast:"4.00%",previous:"4.00%",id:"us-fed-rate-20261028"},
+  name:"Federal Funds Rate",id:"us-fed-rate-20261028"},
  {time:"2026-10-29T12:30:00.000Z",test:/\bus gross domestic product october 2026\b|^advance gdp q\/q$/i,
-  name:"Advance GDP q/q",forecast:"3.2%",previous:"2.2%",id:"us-gdp-advance-2026q3"},
+  name:"Advance GDP q/q",id:"us-gdp-advance-2026q3"},
  {time:"2026-10-29T12:30:00.000Z",test:/\bus personal income and outlays \(pce\) october 2026\b|^core pce price index m\/m$/i,
-  name:"Core PCE Price Index m/m",forecast:"0.3%",previous:"0.2%",id:"us-core-pce-mm-2026sep",
+  name:"Core PCE Price Index m/m",id:"us-core-pce-mm-2026sep",
   beaMetric:true}
 ];
 function alignTradingCalendarNames(event){
