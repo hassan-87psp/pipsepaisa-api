@@ -165,6 +165,20 @@ async function main(){
   report.forexFactoryWeb={http:r.status,bytes:html.length,contentType:r.headers.get('content-type'),
     cpiTitleFound:at>=0,cpiContext:excerpt,hasKnownActual:html.includes('0.8%')};
  }catch(e){report.forexFactoryWeb={error:String(e.message||e)};}
+ // Check primary statistical authorities before adding any live Actual backfill.
+ for(const [id,url,needle] of [
+   ['abs','https://www.abs.gov.au/statistics/economy/price-indexes-and-inflation/consumer-price-index-australia/sep-2026','September 2026'],
+   ['rbnz','https://www.rbnz.govt.nz/monetary-policy/about-monetary-policy/the-official-cash-rate','2.75']
+ ]){
+   try{
+     const r=await fetch(url,{signal:AbortSignal.timeout(12000),
+       headers:{Accept:'text/html','User-Agent':'Mozilla/5.0'}});
+     const html=await r.text(),i=html.indexOf(needle);
+     report['official_'+id]={http:r.status,bytes:html.length,
+       containsTerm:i>=0,context:i<0?'':html.slice(Math.max(0,i-80),i+180)
+         .replace(/\s+/g,' ').slice(0,250)};
+   }catch(e){report['official_'+id]={error:String(e.message||e)};}
+ }
  // Diagnose publisher RSS availability separately from Google News attribution.
  try{
   const r=await fetch('https://www.bloomberg.com/feeds/news.rss',{signal:AbortSignal.timeout(12000)});
