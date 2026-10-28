@@ -329,10 +329,15 @@ function normalizeFF(x){
  const ts=Date.parse(x.date||''),country=nonempty(x.country,3).toUpperCase(),title=nonempty(x.title,180);
  if(!Number.isFinite(ts)||!title||!/^[A-Z]{3}$/.test(country))return null;
  const impact=String(x.impact||'').toLowerCase();
+ // Use only Forex Factory's published Actual field after the release timestamp.
+ // Never infer a result from forecast/previous or show future placeholders as Actual.
+ const rawActual=nonempty(x.actual);
+ const actual=ts<=Date.now() && rawActual && !/^(?:-|--|—|n\/a|pending|tbd)$/i.test(rawActual)?rawActual:'';
  return {date:new Date(ts).toISOString(),country,title,impact:impact==='high'?'High':impact==='medium'?'Medium':impact==='holiday'?'Holiday':'Low',
-  forecast:nonempty(x.forecast),previous:nonempty(x.previous),actual:'',
+  forecast:nonempty(x.forecast),previous:nonempty(x.previous),actual,
   source:'Forex Factory',sourceUrl:FF_CREDIT,forecastSource:FF_CREDIT,previousSource:FF_CREDIT,
-  status:'confirmed',eventId:'ff-'+country+'-'+ts+'-'+title.toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,50)};
+  actualSource:actual?FF_CREDIT:null,
+  status:actual?'released':'confirmed',eventId:'ff-'+country+'-'+ts+'-'+title.toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,50)};
 }
 async function getFFWeekly(){
  if(ffWeeklyCache.at&&Date.now()-ffWeeklyCache.at<3600000)return ffWeeklyCache.rows;
@@ -372,6 +377,7 @@ function applyFFWeekly(events,weekly){
   if(!match){out.push(row);continue;}
   if(!match.forecast&&row.forecast){match.forecast=row.forecast;match.forecastSource=FF_CREDIT;}
   if(!match.previous&&row.previous){match.previous=row.previous;match.previousSource=FF_CREDIT;}
+  if(!match.actual&&row.actual){match.actual=row.actual;match.actualSource=FF_CREDIT;}
  }
  return sortUnique(out);
 }
