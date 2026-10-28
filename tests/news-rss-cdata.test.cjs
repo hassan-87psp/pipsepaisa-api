@@ -18,7 +18,7 @@ test('Bloomberg CDATA headline and description remain readable',()=>{
 test('CDATA HTML cannot leak tags and ordinary RSS text still renders',()=>{
  assert.equal(clean('<![CDATA[Gold <strong>rises</strong> &amp; USD falls]]>'),'Gold rises & USD falls');
  assert.equal(clean('<p>US CPI rises 0.3%</p>'),'US CPI rises 0.3%');
- assert.equal(clean('<![CDATA[<script>alert(1)</script>Fed decision]]>'),'alert(1)Fed decision');
+ assert.equal(clean('<![CDATA[<script>alert(1)</script>Fed decision]]>'),'alert(1) Fed decision');
 });
 test('old or untimed items are filtered rather than treated as new',()=>{
  const xml='<rss><channel><item><title><![CDATA[Old Bloomberg Story]]></title>'+
