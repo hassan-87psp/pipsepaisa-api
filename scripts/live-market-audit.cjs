@@ -46,6 +46,16 @@ async function main(){
    report.warnings.push('Some news articles have invalid dates or missing source links');
   if(data.items.length&&!unique.size)report.warnings.push('Headline impact labels unavailable');
  }catch(e){report.headlinesError=String(e.message||e);report.warnings.push('News article verification failed');}
+ // Diagnose publisher RSS availability separately from Google News attribution.
+ try{
+  const r=await fetch('https://www.bloomberg.com/feeds/news.rss',{signal:AbortSignal.timeout(12000)});
+  const xml=await r.text();
+  const first=(xml.match(/<item(?:\\s[^>]*)?>[\\s\\S]*?<\\/item>/i)||[])[0]||'';
+  const rawDate=(first.match(/<pubDate>([\\s\\S]*?)<\\/pubDate>/i)||[])[1]||'';
+  report.bloombergPublisherDiagnostic={http:r.status,xmlBytes:xml.length,
+   rawItems:(xml.match(/<item(?:\\s[^>]*)?>/gi)||[]).length,
+   firstDate:rawDate.slice(0,90),firstDateValid:Number.isFinite(Date.parse(rawDate))};
+ }catch(e){report.bloombergPublisherDiagnostic={error:String(e.message||e)};}
  console.log('PIPSEPAISA_LIVE_MARKET_AUDIT '+JSON.stringify(report,null,2));
  if(report.calendarError||report.newsError||report.headlinesError)process.exitCode=1;
 }
