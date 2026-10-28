@@ -325,10 +325,13 @@ async function readFeed(feed, now) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(feed.url, { signal: controller.signal, headers: {
-      'User-Agent': 'Mozilla/5.0 (compatible; PipSePaisaNewsHub/3.0; +https://pipsepaisa.com)',
-      'Accept': 'application/rss+xml, application/xml, text/xml, */*'
-    } });
+    const headers={ 'Accept': 'application/rss+xml, application/xml, text/xml, */*' };
+    // Bloomberg's public RSS can return an empty feed to identifiable crawler UAs.
+    // Use the runtime default agent for its public publisher feed; retain the
+    // attributed bot UA for the other publishers.
+    if(feed.name!=='Bloomberg')
+      headers['User-Agent']='Mozilla/5.0 (compatible; PipSePaisaNewsHub/3.0; +https://pipsepaisa.com)';
+    const response = await fetch(feed.url, { signal: controller.signal, headers });
     if (!response.ok) throw new Error('HTTP ' + response.status);
     const xml = await response.text();
     if (!/<rss\b|<item\b|<feed\b|<entry\b/i.test(xml)) throw new Error('Invalid RSS/Atom');
