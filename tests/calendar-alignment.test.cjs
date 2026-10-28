@@ -166,3 +166,39 @@ test('published Forex Factory Actual values flow to the matching event with attr
  assert.equal(future.actual,'');
  assert.equal(future.actualSource,null);
 });
+
+test('Forex Factory current published forecast and previous take priority over stale provider values',()=>{
+ const t=require('../api/calendar.js')._test;
+ const date='2026-10-28T18:00:00.000Z';
+ const base=[{date,country:'USD',title:'Federal Funds Rate',impact:'High',
+  forecast:'3.75%',previous:'3.75%',source:'Finance Calendar',
+  forecastSource:'Finance Calendar',previousSource:'Finance Calendar'}];
+ const weekly=[{date,country:'USD',title:'FOMC Rate Decision',impact:'High',
+  forecast:'4.00%',previous:'4.00%',source:'Forex Factory'}];
+ const merged=t.applyFFWeekly(base,weekly);
+ assert.equal(merged.length,1,'explicit alias must map to same event, without duplicates');
+ assert.equal(merged[0].forecast,'4.00%');
+ assert.equal(merged[0].previous,'4.00%');
+ assert.equal(merged[0].forecastSource,'https://www.forexfactory.com/calendar');
+ assert.equal(merged[0].previousSource,'https://www.forexfactory.com/calendar');
+});
+test('Forex Factory blank forecast does not delete a verified provider consensus',()=>{
+ const t=require('../api/calendar.js')._test;
+ const date='2026-10-28T18:00:00.000Z';
+ const merged=t.applyFFWeekly([{date,country:'USD',title:'Federal Funds Rate',
+  forecast:'4.00%',previous:'4.00%'}],[{date,country:'USD',title:'Federal Funds Rate',
+  forecast:'',previous:''}]);
+ assert.equal(merged[0].forecast,'4.00%');
+ assert.equal(merged[0].previous,'4.00%');
+});
+test('same release time with DIFFERENT economic metric does not borrow Forex Factory consensus',()=>{
+ const t=require('../api/calendar.js')._test;
+ const date='2026-10-29T12:30:00.000Z';
+ const incoming=[{date,country:'USD',title:'Core PCE Price Index m/m',
+  forecast:'0.3%',previous:'0.2%'}];
+ const result=t.applyFFWeekly([{date,country:'USD',title:'Advance GDP q/q',
+  forecast:'3.2%',previous:'2.2%'}],incoming);
+ assert.equal(result.length,2);
+ assert.equal(result.find(x=>x.title==='Advance GDP q/q').forecast,'3.2%');
+ assert.equal(result.find(x=>x.title==='Core PCE Price Index m/m').forecast,'0.3%');
+});
