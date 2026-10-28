@@ -326,6 +326,7 @@ async function officialOverlay(events,now){
 
 const FF_EXPORT='https://nfs.faireconomy.media/ff_calendar_thisweek.json';
 const FF_CREDIT='https://www.forexfactory.com/calendar';
+const FF_CACHE_MS=5*60*1000; // Refresh published consensus regularly, not once an hour.
 let ffWeeklyCache={at:0,rows:[]},ffWeeklyPending=null;
 function normalizeFF(x){
  if(!x||typeof x!=='object')return null;
@@ -343,7 +344,7 @@ function normalizeFF(x){
   status:actual?'released':'confirmed',eventId:'ff-'+country+'-'+ts+'-'+title.toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,50)};
 }
 async function getFFWeekly(){
- if(ffWeeklyCache.at&&Date.now()-ffWeeklyCache.at<3600000)return ffWeeklyCache.rows;
+ if(ffWeeklyCache.at&&Date.now()-ffWeeklyCache.at<FF_CACHE_MS)return ffWeeklyCache.rows;
  if(ffWeeklyPending)return ffWeeklyPending;
  ffWeeklyPending=(async()=>{
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),4800);
@@ -378,8 +379,20 @@ function applyFFWeekly(events,weekly){
  for(const row of weekly){
   const match=out.find(x=>sameFF(x,row));
   if(!match){out.push(row);continue;}
-  if(!match.forecast&&row.forecast){match.forecast=row.forecast;match.forecastSource=FF_CREDIT;}
-  if(!match.previous&&row.previous){match.previous=row.previous;match.previousSource=FF_CREDIT;}
+  // Forex Factory is authoritative for its published Forecast/Previous on the
+  // SAME date, country and precise event title (or an explicit safe alias).
+  // The generic schedule feed can hold an older consensus; do not preserve it.
+  // Blank FF values must never erase another verified source's field.
+  if(row.forecast&&match.forecast!==row.forecast){
+   match.forecast=row.forecast;match.forecastSource=FF_CREDIT;
+  }else if(row.forecast&&!match.forecastSource){
+   match.forecastSource=FF_CREDIT;
+  }
+  if(row.previous&&match.previous!==row.previous){
+   match.previous=row.previous;match.previousSource=FF_CREDIT;
+  }else if(row.previous&&!match.previousSource){
+   match.previousSource=FF_CREDIT;
+  }
   if(!match.actual&&row.actual){match.actual=row.actual;match.actualSource=FF_CREDIT;}
  }
  return sortUnique(out);
