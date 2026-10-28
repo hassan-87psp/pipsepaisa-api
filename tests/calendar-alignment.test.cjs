@@ -241,3 +241,40 @@ test('no generic central bank event is removed when release dates are more than 
  const result=t.applyFFWeekly([broad],[ff]);
  assert.equal(result.length,2);
 });
+
+test('October 28 ABS released Actual values are exact metric matches with official attribution',()=>{
+ const t=require('../api/calendar.js')._test;
+ const date='2026-10-28T00:30:00.000Z';
+ const rows=['CPI m/m','CPI y/y','Trimmed Mean CPI m/m','Australia CPI: September 2026'].map(title=>({
+  date,country:'AUD',title,impact:'High',forecast:'0.7%',previous:'0.4%',actual:'',status:'confirmed'
+ }));
+ const result=t.applyPrimaryReleasedActuals(rows,Date.parse('2026-10-28T10:00:00Z'));
+ assert.deepEqual(result.map(x=>x.actual),['0.8%','4.3%','0.3%','']);
+ assert.equal(result[0].actualSource,'Australian Bureau of Statistics');
+ assert.equal(result[0].status,'released');
+ assert.equal(result[1].actualSourceUrl,'https://www.abs.gov.au/statistics/economy/price-indexes-and-inflation/consumer-price-index-australia/sep-2026');
+ assert.equal(result[0].forecast,'0.7%');
+});
+test('RBNZ published OCR Actual never leaks to another date, currency or statement',()=>{
+ const t=require('../api/calendar.js')._test;
+ const date='2026-10-28T01:00:00.000Z';
+ const original=[
+  {date,country:'NZD',title:'Official Cash Rate',forecast:'3.00%',actual:''},
+  {date,country:'NZD',title:'RBNZ Rate Statement',actual:''},
+  {date:'2026-12-09T01:00:00.000Z',country:'NZD',title:'Official Cash Rate',actual:''},
+  {date,country:'AUD',title:'Official Cash Rate',actual:''}
+ ];
+ const released=t.applyPrimaryReleasedActuals(original,Date.parse('2026-10-28T10:00:00Z'));
+ assert.deepEqual(released.map(x=>x.actual),['2.75%','','','']);
+ assert.equal(released[0].actualSource,'Reserve Bank of New Zealand');
+ assert.equal(released[0].forecast,'3.00%');
+ const early=t.applyPrimaryReleasedActuals(original,Date.parse('2026-10-28T00:58:00Z'));
+ assert.equal(early[0].actual,'','never publish an Official Cash Rate before release time');
+});
+test('Official primary snapshots do not overwrite newer verified provider actual',()=>{
+ const t=require('../api/calendar.js')._test;
+ const row={date:'2026-10-28T00:30:00.000Z',country:'AUD',title:'CPI m/m',actual:'0.9%',actualSource:'Verified Publisher'};
+ const result=t.applyPrimaryReleasedActuals([row],Date.parse('2026-10-28T10:00:00Z'));
+ assert.equal(result[0].actual,'0.9%');
+ assert.equal(result[0].actualSource,'Verified Publisher');
+});
