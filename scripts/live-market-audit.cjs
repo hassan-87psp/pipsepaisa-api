@@ -11,6 +11,7 @@ async function main(){
  const report={checkedAt:new Date().toISOString(),endpoint:base,warnings:[]};
  try {
   const events=await get('/calendar');
+  report._eventCache=events;
   if(!Array.isArray(events))throw Error('Calendar response is not an event array');
   const malformed=events.filter(x=>!x||!Number.isFinite(Date.parse(x.date))||!x.title||!x.country);
   if(malformed.length)throw Error(malformed.length+' calendar events have invalid structure');
@@ -66,7 +67,28 @@ async function main(){
   if(res.ok){
    const rows=await res.json();
    report.forexFactoryWeekly={total:rows.length,withActual:rows.filter(x=>String(x.actual||'').trim()!=='').length,
+      withForecast:rows.filter(x=>String(x.forecast||'').trim()!=='').length,
       highImpactPast:rows.filter(x=>String(x.impact).toLowerCase()==='high'&&Date.parse(x.date)<Date.now()).length};
+   const events=report._eventCache||[];
+   const normalize=v=>String(v||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+   const withForecast=rows.filter(x=>String(x.forecast||'').trim()&&Number.isFinite(Date.parse(x.date)));
+   const comparisons=withForecast.map(ff=>{
+     const exact=events.filter(e=>e.country===ff.country && Math.abs(Date.parse(e.date)-Date.parse(ff.date))<=4*60000 &&
+       normalize(e.title)===normalize(ff.title));
+     const timeMatch=events.filter(e=>e.country===ff.country && Math.abs(Date.parse(e.date)-Date.parse(ff.date))<=4*60000);
+     const match=exact.find(e=>e.forecast===ff.forecast)||exact[0];
+     return {title:ff.title,country:ff.country,date:ff.date,ffForecast:ff.forecast,
+       ourForecast:match?.forecast||'',exactCount:exact.length,timeMatchTitles:timeMatch.map(e=>e.title).slice(0,6),
+       status:match?(match.forecast===ff.forecast?'ok':'mismatch'):'missing'};
+   });
+   report.forecastParity={sourceForecastEvents:comparisons.length,
+     matched:comparisons.filter(x=>x.status==='ok').length,
+     mismatched:comparisons.filter(x=>x.status==='mismatch').length,
+     notMatched:comparisons.filter(x=>x.status==='missing').length,
+     cases:comparisons.filter(x=>x.status!=='ok').slice(0,25)};
+   if(report.forecastParity.notMatched||report.forecastParity.mismatched)
+     report.warnings.push('Forex Factory published forecasts not fully aligned with site calendar');
+
   }else report.forexFactoryWeekly={http:res.status};
  }catch(e){report.forexFactoryWeekly={error:String(e.message||e)};}
  // Diagnose publisher RSS availability separately from Google News attribution.
@@ -80,6 +102,7 @@ async function main(){
    firstDate:rawDate.slice(0,90),firstDateValid:Number.isFinite(Date.parse(rawDate)),
    firstItemSnippet:first.slice(0,650)};
  }catch(e){report.bloombergPublisherDiagnostic={error:String(e.message||e)};}
+ delete report._eventCache;
  console.log('PIPSEPAISA_LIVE_MARKET_AUDIT '+JSON.stringify(report,null,2));
  // A daily audit must fail for material regressions, not only HTTP errors.
  // Missing individual Actuals and unobservable price reactions are warnings,
