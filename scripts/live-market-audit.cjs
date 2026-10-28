@@ -45,7 +45,7 @@ async function main(){
   if(data.items.length&&!data.items.every(x=>Number.isFinite(Date.parse(x.date))&&x.title&&x.link))
    report.warnings.push('Some news articles have invalid dates or missing source links');
   if(data.items.length&&!unique.size)report.warnings.push('Headline impact labels unavailable');
-  const candidate=data.items.find(x=>/\\b(gold|silver|bitcoin|btc|oil|wti|brent|eur\\s*\\/?\\s*usd)\\b/i.test(x.title||'') &&
+  const candidate=data.items.find(x=>['gold','silver','bitcoin','btc','oil','wti','brent','eur/usd'].some(term=>String(x.title||'').toLowerCase().includes(term)) &&
     Date.now()-Date.parse(x.date)>55*60000 && Date.now()-Date.parse(x.date)<4*86400000);
   if(candidate){
    const q=new URLSearchParams({title:candidate.title,at:candidate.date});
