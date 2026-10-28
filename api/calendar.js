@@ -160,12 +160,6 @@ function alignTradingCalendarNames(event){
  }else if(match.name==="Advance GDP q/q"){
   result.sourceUrl="https://www.bea.gov/news/schedule/full";
  }
- if(!result.forecast||!result.previous){
-  result.forecast=result.forecast||match.forecast;
-  result.previous=result.previous||match.previous;
-  result.forecastSnapshot="2026-10-27";
-  result.forecastSource="Admin-provided Forex Factory screenshot, 27 Oct 2026; not a live feed";
- }
  return result;
 }
 function sortUnique(rows){
@@ -322,13 +316,69 @@ async function officialOverlay(events,now){
  }
  return enhanced;
 }
+
+const FF_EXPORT='https://nfs.faireconomy.media/ff_calendar_thisweek.json';
+const FF_CREDIT='https://www.forexfactory.com/calendar';
+let ffWeeklyCache={at:0,rows:[]},ffWeeklyPending=null;
+function normalizeFF(x){
+ if(!x||typeof x!=='object')return null;
+ const ts=Date.parse(x.date||''),country=nonempty(x.country,3).toUpperCase(),title=nonempty(x.title,180);
+ if(!Number.isFinite(ts)||!title||!/^[A-Z]{3}$/.test(country))return null;
+ const impact=String(x.impact||'').toLowerCase();
+ return {date:new Date(ts).toISOString(),country,title,impact:impact==='high'?'High':impact==='medium'?'Medium':impact==='holiday'?'Holiday':'Low',
+  forecast:nonempty(x.forecast),previous:nonempty(x.previous),actual:'',
+  source:'Forex Factory',sourceUrl:FF_CREDIT,forecastSource:FF_CREDIT,previousSource:FF_CREDIT,
+  status:'confirmed',eventId:'ff-'+country+'-'+ts+'-'+title.toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,50)};
+}
+async function getFFWeekly(){
+ if(ffWeeklyCache.at&&Date.now()-ffWeeklyCache.at<3600000)return ffWeeklyCache.rows;
+ if(ffWeeklyPending)return ffWeeklyPending;
+ ffWeeklyPending=(async()=>{
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),4800);
+  try{
+   const response=await fetch(FF_EXPORT,{signal:controller.signal,headers:{Accept:'application/json'}});
+   if(!response.ok)throw Error('FF export HTTP '+response.status);
+   const raw=await response.json();
+   if(!Array.isArray(raw))throw Error('Invalid FF JSON');
+   const rows=raw.slice(0,220).map(normalizeFF).filter(Boolean);
+   if(!rows.length)throw Error('Empty FF export');
+   ffWeeklyCache={at:Date.now(),rows};
+  }catch(_){
+   // Do not repeatedly hammer Forex Factory (2 export requests / 5 minutes).
+   ffWeeklyCache={at:Date.now(),rows:ffWeeklyCache.rows};
+  }finally{clearTimeout(timer);}
+  return ffWeeklyCache.rows;
+ })().finally(()=>{ffWeeklyPending=null});
+ return ffWeeklyPending;
+}
+function sameFF(a,b){
+ if(a.country!==b.country||Math.abs(Date.parse(a.date)-Date.parse(b.date))>4*60000)return false;
+ const norm=x=>String(x||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+ const aa=norm(a.title),bb=norm(b.title),orig=norm(a.sourceTitle);
+ if(aa===bb||orig===bb)return true;
+ const synonyms=[['federalfundsrate','fomcratedecision'],['unemploymentclaims','initialjoblessclaims'],
+ ['officialcashrate','rbnzratedecision'],['overnightrate','bocratedecision'],
+ ['mainrefinancingrate','ecbratedecision'],['nonfarmemploymentchange','nonfarmpayrolls']];
+ return synonyms.some(([x,y])=>((aa===x||orig===x)&&bb===y)||((aa===y||orig===y)&&bb===x));
+}
+function applyFFWeekly(events,weekly){
+ const out=events.map(e=>({...e}));
+ for(const row of weekly){
+  const match=out.find(x=>sameFF(x,row));
+  if(!match){out.push(row);continue;}
+  if(!match.forecast&&row.forecast){match.forecast=row.forecast;match.forecastSource=FF_CREDIT;}
+  if(!match.previous&&row.previous){match.previous=row.previous;match.previousSource=FF_CREDIT;}
+ }
+ return sortUnique(out);
+}
+
 module.exports=async function handler(req,res){
  res.setHeader('Access-Control-Allow-Origin','*');
  res.setHeader('Access-Control-Allow-Methods','GET, OPTIONS');
  if(req.method==='OPTIONS')return res.status(200).end();
  if(req.method!=='GET')return res.status(405).json({error:'Method not allowed'});
  const now=Date.now();
- const cache=await getSchedule();
+ const [cache,ffRows]=await Promise.all([getSchedule(),getFFWeekly()]);
  const releaseWindow=cache.rows.some(e=>e.country==='USD'&&reportKind(e.title)
    &&Math.abs(Date.parse(e.date)-now)<90*60000);
  res.setHeader('Cache-Control',releaseWindow
@@ -337,10 +387,10 @@ module.exports=async function handler(req,res){
  res.setHeader('X-Calendar-Source','Finance-Calendar-and-Official-BLS');
  if(!cache.rows.length)
    return res.status(503).json({error:'Verified calendar source temporarily unavailable',events:[],source:'Finance Calendar'});
- const events=addVerifiedFedEvents(cache.rows.filter(e=>Date.parse(e.date)>=now-30*DAY&&Date.parse(e.date)<=now+21*DAY).map(e=>({...e}))).map(alignTradingCalendarNames);
+ const events=applyFFWeekly(addVerifiedFedEvents(cache.rows.filter(e=>Date.parse(e.date)>=now-30*DAY&&Date.parse(e.date)<=now+21*DAY).map(e=>({...e}))).map(alignTradingCalendarNames),ffRows);
  await officialOverlay(events,now);
  // Existing site expects an array; these are verified provider rows, not demo data.
  return res.status(200).json(events);
 };
 // Export only pure helpers for local deterministic testing; no network requests during import.
-module.exports._test={normalize,releaseInstant,reportKind,reportDate,officialActual,sortUnique,addVerifiedFedEvents,addRecurringCompanions,nameEvent,alignTradingCalendarNames,formatRecordedValue};
+module.exports._test={normalize,normalizeFF,applyFFWeekly,sameFF,releaseInstant,reportKind,reportDate,officialActual,sortUnique,addVerifiedFedEvents,addRecurringCompanions,nameEvent,alignTradingCalendarNames,formatRecordedValue};
