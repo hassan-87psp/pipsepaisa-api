@@ -81,6 +81,20 @@ async function main(){
    firstItemSnippet:first.slice(0,650)};
  }catch(e){report.bloombergPublisherDiagnostic={error:String(e.message||e)};}
  console.log('PIPSEPAISA_LIVE_MARKET_AUDIT '+JSON.stringify(report,null,2));
- if(report.calendarError||report.newsError||report.headlinesError)process.exitCode=1;
+ // A daily audit must fail for material regressions, not only HTTP errors.
+ // Missing individual Actuals and unobservable price reactions are warnings,
+ // because free/official sources legitimately have gaps.
+ const critical=[];
+ if(report.calendarError||report.newsError||report.headlinesError)
+  critical.push('Market-data endpoint failed');
+ if(report.calendar && report.calendar.total===0)
+  critical.push('Verified calendar contains no events');
+ if(report.calendar && report.calendar.pastEvents>0 && report.calendar.pastWithActual===0)
+  critical.push('All recorded historical Actual values disappeared');
+ if(report.news && (report.news.working===0||report.news.uniqueHeadlines===0))
+  critical.push('All live news sources or headlines disappeared');
+ if(report.news && report.news.bloombergConfigured>0 && report.news.bloombergHeadlines===0)
+  critical.push('Bloomberg direct RSS headlines are missing again');
+ if(critical.length){console.error('PIPSEPAISA_CRITICAL_DATA_REGRESSION '+JSON.stringify(critical));process.exitCode=1;}
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});
