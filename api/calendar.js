@@ -384,9 +384,9 @@ module.exports=async function handler(req,res){
  res.setHeader('Cache-Control',releaseWindow
     ?'public, s-maxage=10, stale-while-revalidate=10'
     :'public, s-maxage=90, stale-while-revalidate=60');
- res.setHeader('X-Calendar-Source','Finance-Calendar-and-Official-BLS');
- if(!cache.rows.length)
-   return res.status(503).json({error:'Verified calendar source temporarily unavailable',events:[],source:'Finance Calendar'});
+ res.setHeader('X-Calendar-Source',ffRows.length?'Finance-Calendar-ForexFactory-and-Official-BLS':'Finance-Calendar-and-Official-BLS');
+ if(!cache.rows.length&&!ffRows.length)
+   return res.status(503).json({error:'Verified calendar sources temporarily unavailable',events:[],source:'Finance Calendar / Forex Factory'});
  const events=applyFFWeekly(addVerifiedFedEvents(cache.rows.filter(e=>Date.parse(e.date)>=now-30*DAY&&Date.parse(e.date)<=now+21*DAY).map(e=>({...e}))).map(alignTradingCalendarNames),ffRows);
  await officialOverlay(events,now);
  // Existing site expects an array; these are verified provider rows, not demo data.
