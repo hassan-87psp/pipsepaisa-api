@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - 'scripts/live-market-audit.cjs'
+      - 'api/news.js'
+      - 'api/calendar.js'
       - '.github/workflows/live-market-audit.yml'
 jobs:
   audit:
