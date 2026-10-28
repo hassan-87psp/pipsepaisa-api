@@ -54,7 +54,8 @@ async function main(){
   const rawDate=(first.split('<pubDate>')[1]||'').split('</pubDate>')[0]||'';
   report.bloombergPublisherDiagnostic={http:r.status,xmlBytes:xml.length,
    rawItems:Math.max(0,xml.split('<item>').length-1),
-   firstDate:rawDate.slice(0,90),firstDateValid:Number.isFinite(Date.parse(rawDate))};
+   firstDate:rawDate.slice(0,90),firstDateValid:Number.isFinite(Date.parse(rawDate)),
+   firstItemSnippet:first.slice(0,650)};
  }catch(e){report.bloombergPublisherDiagnostic={error:String(e.message||e)};}
  console.log('PIPSEPAISA_LIVE_MARKET_AUDIT '+JSON.stringify(report,null,2));
  if(report.calendarError||report.newsError||report.headlinesError)process.exitCode=1;
