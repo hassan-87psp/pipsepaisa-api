@@ -40,6 +40,15 @@ async function main(){
     duplicateEventKeys:keys.length-new Set(keys).size,
     unknownImpact:events.filter(x=>!['High','Medium','Low','Holiday'].includes(x.impact)).length
   };
+  // Spot-check published high-impact Australian CPI and New Zealand rate
+  // against the public publisher page, without inventing missing values.
+  report.calendarWatch=events.filter(e=>
+    ['AUD','NZD'].includes(e.country)&&
+    /\b(?:cpi|consumer price|cash rate|rbnz rate)\b/i.test(e.title)&&
+    Math.abs(Date.parse(e.date)-Date.parse('2026-10-28T00:30:00Z'))<2*86400000
+  ).map(e=>({date:e.date,country:e.country,title:e.title,impact:e.impact,
+    forecast:e.forecast||'',previous:e.previous||'',actual:e.actual||'',
+    source:e.source,actualSource:e.actualSource||'',status:e.status}));
   if(report.calendarQuality.futureWithActual.length)report.warnings.push('Calendar has future events with premature Actual');
   if(report.calendarQuality.duplicateEventKeys)report.warnings.push('Calendar includes duplicate same-title/currency/release-time entries');
   if(!events.length)report.warnings.push('Calendar has zero verified entries');
@@ -144,6 +153,18 @@ async function main(){
 
   }else report.forexFactoryWeekly={http:res.status};
  }catch(e){report.forexFactoryWeekly={error:String(e.message||e)};}
+ // Diagnose whether publicly visible Forex Factory release Actuals are
+ // available in HTML even though the official weekly JSON currently omits them.
+ try{
+  const r=await fetch('https://www.forexfactory.com/calendar?week=oct25.2026',{
+    signal:AbortSignal.timeout(14000),headers:{Accept:'text/html',
+      'User-Agent':'Mozilla/5.0 (compatible; PipSePaisaCalendarAudit/1.0)'}});
+  const html=await r.text();
+  const term='CPI m/m',at=html.indexOf(term);
+  const excerpt=at>=0?html.slice(Math.max(0,at-300),at+650).replace(/\s+/g,' ').slice(0,950):'';
+  report.forexFactoryWeb={http:r.status,bytes:html.length,contentType:r.headers.get('content-type'),
+    cpiTitleFound:at>=0,cpiContext:excerpt,hasKnownActual:html.includes('0.8%')};
+ }catch(e){report.forexFactoryWeb={error:String(e.message||e)};}
  // Diagnose publisher RSS availability separately from Google News attribution.
  try{
   const r=await fetch('https://www.bloomberg.com/feeds/news.rss',{signal:AbortSignal.timeout(12000)});
