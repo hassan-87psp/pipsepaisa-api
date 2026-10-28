@@ -3,12 +3,16 @@ on:
   push:
     paths:
       - 'api/calendar.js'
+      - 'api/news.js'
+      - 'tests/news-rss-cdata.test.cjs'
       - 'tests/calendar-alignment.test.cjs'
       - 'package.json'
       - '.github/workflows/calendar-quality.yml'
   pull_request:
     paths:
       - 'api/calendar.js'
+      - 'api/news.js'
+      - 'tests/news-rss-cdata.test.cjs'
       - 'tests/calendar-alignment.test.cjs'
       - 'package.json'
 permissions:
@@ -23,5 +27,5 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Validate calendar release naming, timings and snapshot safety
+      - name: Validate economic releases and publisher RSS CDATA parsing
         run: npm test
