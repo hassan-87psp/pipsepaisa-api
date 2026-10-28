@@ -423,6 +423,35 @@ function applyFFWeekly(events,weekly){
  return sortUnique(out);
 }
 
+// Published, date-locked primary-source snapshots for releases whose Forex
+// Factory public JSON omits Actual even after the release. These are NOT
+// forecast-derived figures, and cannot match any other date/month or metric.
+// For future releases, use the verified provider source and await publication.
+const PRIMARY_RELEASE_ACTUALS=[
+ {country:'AUD',date:'2026-10-28T00:30:00.000Z',title:'CPI m/m',actual:'0.8%',
+  source:'Australian Bureau of Statistics',
+  url:'https://www.abs.gov.au/statistics/economy/price-indexes-and-inflation/consumer-price-index-australia/sep-2026'},
+ {country:'AUD',date:'2026-10-28T00:30:00.000Z',title:'CPI y/y',actual:'4.3%',
+  source:'Australian Bureau of Statistics',
+  url:'https://www.abs.gov.au/statistics/economy/price-indexes-and-inflation/consumer-price-index-australia/sep-2026'},
+ {country:'AUD',date:'2026-10-28T00:30:00.000Z',title:'Trimmed Mean CPI m/m',actual:'0.3%',
+  source:'Australian Bureau of Statistics',
+  url:'https://www.abs.gov.au/statistics/economy/price-indexes-and-inflation/consumer-price-index-australia/sep-2026'},
+ {country:'NZD',date:'2026-10-28T01:00:00.000Z',title:'Official Cash Rate',actual:'2.75%',
+  source:'Reserve Bank of New Zealand',
+  url:'https://www.rbnz.govt.nz/news-and-events/news/2026/10/ocr-held-at-2-75-percent'}
+];
+function applyPrimaryReleasedActuals(events,now=Date.now()){
+ return events.map(event=>{
+  if(event.actual||!Number.isFinite(Date.parse(event.date))||Date.parse(event.date)>now)return event;
+  const verified=PRIMARY_RELEASE_ACTUALS.find(x=>x.country===event.country&&
+   x.date===event.date&&x.title.toLowerCase()===String(event.title||'').toLowerCase());
+  if(!verified)return event;
+  return {...event,actual:verified.actual,actualSource:verified.source,
+   actualSourceUrl:verified.url,status:'released'};
+ });
+}
+
 module.exports=async function handler(req,res){
  res.setHeader('Access-Control-Allow-Origin','*');
  res.setHeader('Access-Control-Allow-Methods','GET, OPTIONS');
@@ -440,8 +469,9 @@ module.exports=async function handler(req,res){
    return res.status(503).json({error:'Verified calendar sources temporarily unavailable',events:[],source:'Finance Calendar / Forex Factory'});
  const events=applyFFWeekly(addVerifiedFedEvents(cache.rows.filter(e=>Date.parse(e.date)>=now-30*DAY&&Date.parse(e.date)<=now+21*DAY).map(e=>({...e}))).map(alignTradingCalendarNames),ffRows);
  await officialOverlay(events,now);
+ const verified=applyPrimaryReleasedActuals(events,now);
  // Existing site expects an array; these are verified provider rows, not demo data.
- return res.status(200).json(events);
+ return res.status(200).json(verified);
 };
 // Export only pure helpers for local deterministic testing; no network requests during import.
-module.exports._test={normalize,normalizeFF,applyFFWeekly,sameFF,redundantGenericRate,releaseInstant,reportKind,reportDate,officialActual,sortUnique,addVerifiedFedEvents,addRecurringCompanions,nameEvent,alignTradingCalendarNames,formatRecordedValue};
+module.exports._test={normalize,normalizeFF,applyFFWeekly,applyPrimaryReleasedActuals,sameFF,redundantGenericRate,releaseInstant,reportKind,reportDate,officialActual,sortUnique,addVerifiedFedEvents,addRecurringCompanions,nameEvent,alignTradingCalendarNames,formatRecordedValue};
