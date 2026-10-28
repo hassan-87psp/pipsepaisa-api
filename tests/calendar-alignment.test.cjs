@@ -148,3 +148,21 @@ test('unknown values remain genuinely missing rather than becoming 0 or invented
  assert.equal(test.formatRecordedValue('0','%'),'0%');
  assert.equal(test.formatRecordedValue('high yield 4.25%; bid-to-cover 2.4',''),'high yield 4.25%; bid-to-cover 2.4');
 });
+
+test('published Forex Factory Actual values flow to the matching event with attribution only after release',()=>{
+ const t=require('../api/calendar.js')._test;
+ const past=new Date(Date.now()-86400000).toISOString();
+ const source=t.normalizeFF({title:'Core PCE Price Index m/m',country:'USD',date:past,
+   impact:'High',actual:'0.4%',forecast:'0.3%',previous:'0.2%'});
+ assert.equal(source.actual,'0.4%');
+ assert.equal(source.actualSource,'https://www.forexfactory.com/calendar');
+ const merged=t.applyFFWeekly([{date:past,title:'Core PCE Price Index m/m',country:'USD',
+  impact:'High',status:'confirmed',forecast:'',previous:'',actual:''}],[source]);
+ assert.equal(merged.length,1);
+ assert.equal(merged[0].actual,'0.4%');
+ assert.equal(merged[0].actualSource,'https://www.forexfactory.com/calendar');
+ const future=t.normalizeFF({title:'Federal Funds Rate',country:'USD',
+   date:new Date(Date.now()+86400000).toISOString(),impact:'High',actual:'4.00%'});
+ assert.equal(future.actual,'');
+ assert.equal(future.actualSource,null);
+});
