@@ -195,8 +195,12 @@ function decode(s) {
     }[e.toLowerCase()] || e));
 }
 function clean(s) {
-  return decode(String(s || '').replace(/<[^>]*>/g, ' ')).replace(/<[^>]*>/g, ' ')
-    .replace(/\s+/g, ' ').trim();
+  // Remove CDATA delimiters before stripping HTML tags. Publisher RSS feeds
+  // (including Bloomberg) wrap entire headlines in CDATA; stripping tags first
+  // incorrectly deleted those titles and made otherwise healthy feeds empty.
+  const withoutCdata=String(s||'').replace(/<!\[CDATA\[|\]\]>/g,'');
+  return decode(withoutCdata.replace(/<[^>]*>/g,' ')).replace(/<[^>]*>/g,' ')
+    .replace(/\s+/g,' ').trim();
 }
 function tag(block, name) {
   const m = block.match(new RegExp('<' + name + '(?:\\s[^>]*)?>([\\s\\S]*?)<\\/' + name + '>', 'i'));
@@ -389,3 +393,6 @@ module.exports = async function handler(req, res) {
       error: String(e && e.message || e) });
   }
 };
+
+// Pure RSS helpers for regression tests: no network traffic on import.
+module.exports._test={clean,decode,tag,parseFeed};
