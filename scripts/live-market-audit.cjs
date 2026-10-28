@@ -24,6 +24,24 @@ async function main(){
       country:x.country,title:x.title,source:x.source,status:x.status})),
     eventsWithForecast:events.filter(x=>x.forecast).length,
     eventsWithPrevious:events.filter(x=>x.previous).length};
+  const future=events.filter(x=>Date.parse(x.date)>Date.now());
+  const withinWeek=future.filter(x=>Date.parse(x.date)<Date.now()+7*86400000);
+  const key=x=>[x.country,String(x.title||'').trim().toLowerCase(),Date.parse(x.date)].join('|');
+  const keys=events.map(key);
+  const highNext=withinWeek.filter(x=>x.impact==='High');
+  report.calendarQuality={
+    futureEvents:future.length,
+    upcomingHighNext7Days:highNext.length,
+    upcomingHighWithForecast:highNext.filter(x=>x.forecast).length,
+    upcomingHighWithPrevious:highNext.filter(x=>x.previous).length,
+    upcomingHighEvents:highNext.slice(0,15).map(x=>({date:x.date,country:x.country,
+      title:x.title,forecast:x.forecast||'',previous:x.previous||'',source:x.source})),
+    futureWithActual:future.filter(x=>x.actual).slice(0,20).map(x=>({date:x.date,country:x.country,title:x.title,actual:x.actual})),
+    duplicateEventKeys:keys.length-new Set(keys).size,
+    unknownImpact:events.filter(x=>!['High','Medium','Low','Holiday'].includes(x.impact)).length
+  };
+  if(report.calendarQuality.futureWithActual.length)report.warnings.push('Calendar has future events with premature Actual');
+  if(report.calendarQuality.duplicateEventKeys)report.warnings.push('Calendar includes duplicate same-title/currency/release-time entries');
   if(!events.length)report.warnings.push('Calendar has zero verified entries');
   if(past.length&&!past.some(x=>x.actual))report.warnings.push('Past releases have no published Actual data');
  } catch(e){report.calendarError=String(e.message||e);report.warnings.push('Calendar endpoint verification failed');}
@@ -31,8 +49,11 @@ async function main(){
   const health=await get('/news?health=1');
   const feeds=Array.isArray(health.feeds)?health.feeds:[];
   const bloomberg=feeds.filter(x=>x.name==='Bloomberg');
-  report.news={configured:health.configured,working:health.working,uniqueHeadlines:health.uniqueHeadlines,
+  report.news={configured:health.configured,working:health.working,withItems:health.withItems,
+   uniqueHeadlines:health.uniqueHeadlines,updatedAt:health.updatedAt,
+   emptySources:feeds.filter(x=>x.ok&&!x.count).length,failedSources:feeds.filter(x=>!x.ok).slice(0,8).map(x=>({name:x.name,error:x.error})),
    bloombergConfigured:bloomberg.length,bloombergWorking:bloomberg.filter(x=>x.ok).length,
+   bloombergWithItems:bloomberg.filter(x=>x.count>0).length,
    bloombergHeadlines:bloomberg.reduce((n,x)=>n+(Number(x.count)||0),0)};
   if(!report.news.working||!report.news.uniqueHeadlines)report.warnings.push('News feed returned no live sources or headlines');
   if(bloomberg.length&&!report.news.bloombergWorking)report.warnings.push('Bloomberg publisher RSS currently unavailable; Google News mirrors may still appear');
@@ -44,7 +65,10 @@ async function main(){
   report.headlines={count:data.items.length,hot:data.items.filter(x=>x.heat==='hot').length,
    warm:data.items.filter(x=>x.heat==='warm').length,cold:data.items.filter(x=>x.heat==='cold').length,
    bloombergArticles:data.items.filter(x=>/bloomberg/i.test(x.source||'')).length,
-   bloombergSources:[...new Set(data.items.filter(x=>/bloomberg/i.test(x.source||'')).map(x=>x.source))].slice(0,5)};
+   bloombergSources:[...new Set(data.items.filter(x=>/bloomberg/i.test(x.source||'')).map(x=>x.source))].slice(0,5),
+   latestArticleAt:data.items.length?data.items[0].date:null,
+   uniquePublishers:new Set(data.items.map(x=>x.source)).size,
+   invalidLinks:data.items.filter(x=>{try{return !/^https?:$/.test(new URL(x.link).protocol)}catch{return true}}).length};
   if(report.news?.bloombergConfigured && !report.news.bloombergHeadlines && !report.headlines.bloombergArticles)
    report.warnings.push('No Bloomberg headlines from publisher RSS or Google News fallback');
   if(data.items.length&&!data.items.every(x=>Number.isFinite(Date.parse(x.date))&&x.title&&x.link))
@@ -120,6 +144,8 @@ async function main(){
   critical.push('All live news sources or headlines disappeared');
  if(report.news && report.news.bloombergConfigured>0 && report.news.bloombergHeadlines===0)
   critical.push('Bloomberg direct RSS headlines are missing again');
+ if(report.calendarQuality?.futureWithActual.length||report.calendarQuality?.duplicateEventKeys||report.calendarQuality?.unknownImpact)
+  critical.push('Calendar has premature Actuals, duplicates or invalid impact labels');
  if(report.forecastParity && (report.forecastParity.notMatched ||
    report.forecastParity.mismatched || report.forecastParity.invalidSource))
   critical.push('Forex Factory Forecast sync is not identical for '+report.forecastParity.sourceForecastEvents+' published consensus entries');
