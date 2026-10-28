@@ -26,13 +26,39 @@ test('shows five DISTINCT USD releases with trading metric names and verified UT
  assert.equal(a.every(x=>x.impact==='High'),true);
  assert.equal(new Set(a.map(x=>x.eventId)).size,5);
 });
-test('preserves admin screenshot values only as explicitly dated snapshots',()=>{
+test('does not invent snapshot forecasts or previous results for upcoming USD reports',()=>{
  const a=actual();
- assert.deepEqual([a[0].forecast,a[0].previous],['4.00%','4.00%']);
- assert.deepEqual([a[3].forecast,a[3].previous],['3.2%','2.2%']);
- assert.deepEqual([a[4].forecast,a[4].previous],['0.3%','0.2%']);
- assert.equal(a[4].forecastSnapshot,'2026-10-27');
- assert.match(a[4].forecastSource,/not a live feed/);
+ for (const item of a) {
+  assert.equal(item.forecast,'');
+  assert.equal(item.previous,'');
+  assert.equal(item.forecastSnapshot,undefined);
+ }
+});
+test('uses published precise Forex Factory consensus without fabricating a generic report forecast',()=>{
+ const testHelpers=require('../api/calendar.js')._test;
+ const a=testHelpers.applyFFWeekly(actual(),[{
+  date:'2026-10-29T12:30:00.000Z',country:'USD',title:'Core PCE Price Index m/m',
+  forecast:'0.3%',previous:'0.2%',actual:'',source:'Forex Factory',
+  sourceUrl:'https://www.forexfactory.com/calendar',status:'confirmed',impact:'High'
+ }]);
+ const pce=a.find(x=>x.title==='Core PCE Price Index m/m');
+ assert.equal(pce.forecast,'0.3%');
+ assert.equal(pce.previous,'0.2%');
+ assert.equal(pce.forecastSource,'https://www.forexfactory.com/calendar');
+});
+test('generic report figures must never inherit a precise trading metric label',()=>{
+ const testHelpers=require('../api/calendar.js')._test;
+ const broad={date:'2026-10-29T12:30:00.000Z',title:'US Personal Income and Outlays (PCE) October 2026',
+  country:'USD',seriesCode:'us-pce',status:'confirmed',impact:'High',
+  forecast:'2.9%',previous:'3.1%',actual:'2.8%'};
+ const pce=testHelpers.nameEvent(broad);
+ assert.equal(pce.title,'Core PCE Price Index m/m');
+ assert.deepEqual([pce.forecast,pce.previous,pce.actual],['','','']);
+ const cpi=testHelpers.nameEvent({...broad,title:'US CPI Report November 2026',seriesCode:'us-cpi',unit:'% y/y'});
+ assert.equal(cpi.title,'CPI y/y');
+ assert.equal(cpi.forecast,'2.9%');
+ const cpiUnknown=testHelpers.nameEvent({...broad,title:'US CPI Report November 2026',seriesCode:'us-cpi',unit:''});
+ assert.deepEqual([cpiUnknown.forecast,cpiUnknown.previous,cpiUnknown.actual],['','','']);
 });
 test('never presents generic PCE package actual as monthly core PCE',()=>{
  assert.equal(actual()[4].actual,'');
