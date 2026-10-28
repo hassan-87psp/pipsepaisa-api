@@ -33,11 +33,15 @@ async function main(){
   if(bloomberg.length&&!report.news.bloombergWorking)report.warnings.push('Bloomberg publisher RSS currently unavailable; Google News mirrors may still appear');
  } catch(e){report.newsError=String(e.message||e);report.warnings.push('News health verification failed');}
  try {
-  const data=await get('/news?limit=100');
+  const data=await get('/news?limit=500');
   if(!Array.isArray(data.items))throw Error('News items response is not an array');
   const unique=new Set(data.items.map(x=>x.heat));
   report.headlines={count:data.items.length,hot:data.items.filter(x=>x.heat==='hot').length,
-   warm:data.items.filter(x=>x.heat==='warm').length,cold:data.items.filter(x=>x.heat==='cold').length};
+   warm:data.items.filter(x=>x.heat==='warm').length,cold:data.items.filter(x=>x.heat==='cold').length,
+   bloombergArticles:data.items.filter(x=>/bloomberg/i.test(x.source||'')).length,
+   bloombergSources:[...new Set(data.items.filter(x=>/bloomberg/i.test(x.source||'')).map(x=>x.source))].slice(0,5)};
+  if(report.news?.bloombergConfigured && !report.news.bloombergHeadlines && !report.headlines.bloombergArticles)
+   report.warnings.push('No Bloomberg headlines from publisher RSS or Google News fallback');
   if(data.items.length&&!data.items.every(x=>Number.isFinite(Date.parse(x.date))&&x.title&&x.link))
    report.warnings.push('Some news articles have invalid dates or missing source links');
   if(data.items.length&&!unique.size)report.warnings.push('Headline impact labels unavailable');
