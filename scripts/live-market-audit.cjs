@@ -15,8 +15,12 @@ async function main(){
   const malformed=events.filter(x=>!x||!Number.isFinite(Date.parse(x.date))||!x.title||!x.country);
   if(malformed.length)throw Error(malformed.length+' calendar events have invalid structure');
   const past=events.filter(x=>Date.parse(x.date)<Date.now());
+  const highPast=past.filter(x=>x.impact==='High');
   report.calendar={total:events.length,highImpact:events.filter(x=>x.impact==='High').length,
     pastEvents:past.length,pastWithActual:past.filter(x=>x.actual).length,
+    highPastEvents:highPast.length,highPastWithActual:highPast.filter(x=>x.actual).length,
+    pastMissingActualHighSamples:highPast.filter(x=>!x.actual).slice(0,10).map(x=>({date:x.date,
+      country:x.country,title:x.title,source:x.source,status:x.status})),
     eventsWithForecast:events.filter(x=>x.forecast).length,
     eventsWithPrevious:events.filter(x=>x.previous).length};
   if(!events.length)report.warnings.push('Calendar has zero verified entries');
@@ -56,6 +60,15 @@ async function main(){
   }else report.articleReaction={status:'no eligible timestamped article'};
 
  }catch(e){report.headlinesError=String(e.message||e);report.warnings.push('News article verification failed');}
+ // Compare source-published Actual availability; do not infer or fabricate missing values.
+ try{
+  const res=await fetch('https://nfs.faireconomy.media/ff_calendar_thisweek.json',{signal:AbortSignal.timeout(12000)});
+  if(res.ok){
+   const rows=await res.json();
+   report.forexFactoryWeekly={total:rows.length,withActual:rows.filter(x=>String(x.actual||'').trim()!=='').length,
+      highImpactPast:rows.filter(x=>String(x.impact).toLowerCase()==='high'&&Date.parse(x.date)<Date.now()).length};
+  }else report.forexFactoryWeekly={http:res.status};
+ }catch(e){report.forexFactoryWeekly={error:String(e.message||e)};}
  // Diagnose publisher RSS availability separately from Google News attribution.
  try{
   const r=await fetch('https://www.bloomberg.com/feeds/news.rss',{signal:AbortSignal.timeout(12000)});
