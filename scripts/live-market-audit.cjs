@@ -69,6 +69,10 @@ async function main(){
    latestArticleAt:data.items.length?data.items[0].date:null,
    uniquePublishers:new Set(data.items.map(x=>x.source)).size,
    invalidLinks:data.items.filter(x=>{try{return !/^https?:$/.test(new URL(x.link).protocol)}catch{return true}}).length};
+  const newsAgeMinutes=data.items.length?Math.round((Date.now()-Date.parse(data.items[0].date))/60000):null;
+  report.headlines.latestArticleAgeMinutes=newsAgeMinutes;
+  if(newsAgeMinutes!==null&&newsAgeMinutes>240)
+    report.warnings.push('News feed latest article is over four hours old');
   if(report.news?.bloombergConfigured && !report.news.bloombergHeadlines && !report.headlines.bloombergArticles)
    report.warnings.push('No Bloomberg headlines from publisher RSS or Google News fallback');
   if(data.items.length&&!data.items.every(x=>Number.isFinite(Date.parse(x.date))&&x.title&&x.link))
@@ -106,6 +110,25 @@ async function main(){
        ourForecast:match?.forecast||'',exactCount:exact.length,
        status:match?(match.forecast===normalized.forecast?'ok':'mismatch'):'missing'};
    });
+   // Check more than forecast: published Previous and released Actual must
+   // agree with the same verified Forex Factory metric (never borrow a
+   // number from a separate release happening at the same minute).
+   const fieldAudit=field=>{
+     const published=rows.map(x=>matchHelpers.normalizeFF(x)).filter(x=>x&&x[field]);
+     const failures=[];
+     let matched=0;
+     for(const row of published){
+       const candidates=events.filter(e=>matchHelpers.sameFF(e,row));
+       const match=candidates.find(e=>String(e[field]||'')===String(row[field]))||candidates[0];
+       if(match&&String(match[field]||'')===String(row[field]))matched++;
+       else failures.push({title:row.title,country:row.country,date:row.date,
+         sourceValue:row[field],siteValue:match?.[field]||'',status:match?'mismatch':'notMatched'});
+     }
+     return {published:published.length,matched,mismatched:failures.filter(x=>x.status==='mismatch').length,
+       notMatched:failures.filter(x=>x.status==='notMatched').length,cases:failures.slice(0,15)};
+   };
+   report.previousParity=fieldAudit('previous');
+   report.actualParity=fieldAudit('actual');
    const preciseRateRows=rows.map(x=>matchHelpers.normalizeFF(x)).filter(Boolean);
    const shadowedRateRows=events.filter(e=>preciseRateRows.some(ff=>matchHelpers.redundantGenericRate(e,ff)));
    report.forecastParity={shadowedGenericRateRows:shadowedRateRows.map(e=>({date:e.date,country:e.country,
@@ -150,6 +173,10 @@ async function main(){
   critical.push('Bloomberg direct RSS headlines are missing again');
  if(report.calendarQuality?.futureWithActual.length||report.calendarQuality?.duplicateEventKeys||report.calendarQuality?.unknownImpact)
   critical.push('Calendar has premature Actuals, duplicates or invalid impact labels');
+ for(const field of ['previousParity','actualParity']){
+   if(report[field]&&(report[field].mismatched||report[field].notMatched))
+     critical.push('Forex Factory '+field+' mismatch detected');
+ }
  if(report.forecastParity?.shadowedGenericRateRows?.length)
   critical.push('Duplicated or stale generic central-bank rate times are still visible');
  if(report.forecastParity && (report.forecastParity.notMatched ||
