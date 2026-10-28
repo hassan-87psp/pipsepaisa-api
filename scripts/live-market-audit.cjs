@@ -106,7 +106,11 @@ async function main(){
        ourForecast:match?.forecast||'',exactCount:exact.length,
        status:match?(match.forecast===normalized.forecast?'ok':'mismatch'):'missing'};
    });
-   report.forecastParity={sourceForecastEvents:comparisons.length,
+   const preciseRateRows=rows.map(x=>matchHelpers.normalizeFF(x)).filter(Boolean);
+   const shadowedRateRows=events.filter(e=>preciseRateRows.some(ff=>matchHelpers.redundantGenericRate(e,ff)));
+   report.forecastParity={shadowedGenericRateRows:shadowedRateRows.map(e=>({date:e.date,country:e.country,
+     title:e.title,actual:e.actual||'',forecast:e.forecast||'',previous:e.previous||''})),
+     sourceForecastEvents:comparisons.length,
      matched:comparisons.filter(x=>x.status==='ok').length,
      mismatched:comparisons.filter(x=>x.status==='mismatch').length,
      notMatched:comparisons.filter(x=>x.status==='missing').length,
@@ -146,6 +150,8 @@ async function main(){
   critical.push('Bloomberg direct RSS headlines are missing again');
  if(report.calendarQuality?.futureWithActual.length||report.calendarQuality?.duplicateEventKeys||report.calendarQuality?.unknownImpact)
   critical.push('Calendar has premature Actuals, duplicates or invalid impact labels');
+ if(report.forecastParity?.shadowedGenericRateRows?.length)
+  critical.push('Duplicated or stale generic central-bank rate times are still visible');
  if(report.forecastParity && (report.forecastParity.notMatched ||
    report.forecastParity.mismatched || report.forecastParity.invalidSource))
   critical.push('Forex Factory Forecast sync is not identical for '+report.forecastParity.sourceForecastEvents+' published consensus entries');
