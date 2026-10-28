@@ -70,21 +70,23 @@ async function main(){
       withForecast:rows.filter(x=>String(x.forecast||'').trim()!=='').length,
       highImpactPast:rows.filter(x=>String(x.impact).toLowerCase()==='high'&&Date.parse(x.date)<Date.now()).length};
    const events=report._eventCache||[];
-   const normalize=v=>String(v||'').toLowerCase().replace(/[^a-z0-9]/g,'');
-   const withForecast=rows.filter(x=>String(x.forecast||'').trim()&&Number.isFinite(Date.parse(x.date)));
-   const comparisons=withForecast.map(ff=>{
-     const exact=events.filter(e=>e.country===ff.country && Math.abs(Date.parse(e.date)-Date.parse(ff.date))<=4*60000 &&
-       normalize(e.title)===normalize(ff.title));
-     const timeMatch=events.filter(e=>e.country===ff.country && Math.abs(Date.parse(e.date)-Date.parse(ff.date))<=4*60000);
-     const match=exact.find(e=>e.forecast===ff.forecast)||exact[0];
-     return {title:ff.title,country:ff.country,date:ff.date,ffForecast:ff.forecast,
-       ourForecast:match?.forecast||'',exactCount:exact.length,timeMatchTitles:timeMatch.map(e=>e.title).slice(0,6),
-       status:match?(match.forecast===ff.forecast?'ok':'mismatch'):'missing'};
+   // Match the same event via backend's strict country/time/name-or-safe-alias rules.
+   const matchHelpers=require('../api/calendar.js')._test;
+   const withForecast=rows.filter(x=>String(x.forecast||'').trim())
+     .map(x=>({raw:x,normalized:matchHelpers.normalizeFF(x)}));
+   const comparisons=withForecast.map(({raw:ff,normalized})=>{
+     if(!normalized)return {title:ff.title,country:ff.country,date:ff.date,status:'invalid_source_event'};
+     const exact=events.filter(e=>matchHelpers.sameFF(e,normalized));
+     const match=exact.find(e=>e.forecast===normalized.forecast)||exact[0];
+     return {title:ff.title,country:ff.country,date:ff.date,ffForecast:normalized.forecast,
+       ourForecast:match?.forecast||'',exactCount:exact.length,
+       status:match?(match.forecast===normalized.forecast?'ok':'mismatch'):'missing'};
    });
    report.forecastParity={sourceForecastEvents:comparisons.length,
      matched:comparisons.filter(x=>x.status==='ok').length,
      mismatched:comparisons.filter(x=>x.status==='mismatch').length,
      notMatched:comparisons.filter(x=>x.status==='missing').length,
+     invalidSource:comparisons.filter(x=>x.status==='invalid_source_event').length,
      cases:comparisons.filter(x=>x.status!=='ok').slice(0,25)};
    if(report.forecastParity.notMatched||report.forecastParity.mismatched)
      report.warnings.push('Forex Factory published forecasts not fully aligned with site calendar');
@@ -118,6 +120,9 @@ async function main(){
   critical.push('All live news sources or headlines disappeared');
  if(report.news && report.news.bloombergConfigured>0 && report.news.bloombergHeadlines===0)
   critical.push('Bloomberg direct RSS headlines are missing again');
+ if(report.forecastParity && (report.forecastParity.notMatched ||
+   report.forecastParity.mismatched || report.forecastParity.invalidSource))
+  critical.push('Forex Factory Forecast sync is not identical for '+report.forecastParity.sourceForecastEvents+' published consensus entries');
  if(critical.length){console.error('PIPSEPAISA_CRITICAL_DATA_REGRESSION '+JSON.stringify(critical));process.exitCode=1;}
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});
