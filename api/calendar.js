@@ -374,9 +374,34 @@ function sameFF(a,b){
  ['mainrefinancingrate','ecbratedecision'],['nonfarmemploymentchange','nonfarmpayrolls']];
  return synonyms.some(([x,y])=>((aa===x||orig===x)&&bb===y)||((aa===y||orig===y)&&bb===x));
 }
+// Forex Factory publishes the precise central-bank rate event. Some generic
+// provider schedule rows are outdated (e.g., ECB Oct 29 at 12:45 UTC, while
+// the ECB's official decision and FF Main Refinancing Rate are at 13:15 UTC).
+// Suppress ONLY an empty, broad duplicate when FF carries the exact rate
+// release for the same country/day and within a one-hour schedule discrepancy.
+// Never suppress a generic row containing its own verified data.
+const GENERIC_RATE_EQUIVALENTS=[
+ {country:'EUR',generic:/^ECB Rate Decision\b/i,precise:/^Main Refinancing Rate$/i},
+ {country:'CAD',generic:/^Bank of Canada Rate Decision\b/i,precise:/^Overnight Rate$/i},
+ {country:'AUD',generic:/^RBA Rate Decision\b/i,precise:/^Cash Rate$/i},
+ {country:'NZD',generic:/^RBNZ Rate Decision\b/i,precise:/^Official Cash Rate$/i}
+];
+function redundantGenericRate(generic,precise){
+ if(!generic||!precise||generic.country!==precise.country||
+    generic.actual||generic.forecast||generic.previous)return false;
+ const a=Date.parse(generic.date),b=Date.parse(precise.date);
+ if(!Number.isFinite(a)||!Number.isFinite(b)||Math.abs(a-b)>60*60000||
+    generic.date.slice(0,10)!==precise.date.slice(0,10))return false;
+ return GENERIC_RATE_EQUIVALENTS.some(x=>x.country===generic.country&&
+   x.generic.test(generic.title)&&x.precise.test(precise.title));
+}
 function applyFFWeekly(events,weekly){
  const out=events.map(e=>({...e}));
  for(const row of weekly){
+  // Remove the unvalued generic placeholder only after its precise release
+  // has been supplied by Forex Factory. Otherwise preserve the fallback row.
+  for(let i=out.length-1;i>=0;i--)
+   if(redundantGenericRate(out[i],row))out.splice(i,1);
   const match=out.find(x=>sameFF(x,row));
   if(!match){out.push(row);continue;}
   // Forex Factory is authoritative for its published Forecast/Previous on the
@@ -419,4 +444,4 @@ module.exports=async function handler(req,res){
  return res.status(200).json(events);
 };
 // Export only pure helpers for local deterministic testing; no network requests during import.
-module.exports._test={normalize,normalizeFF,applyFFWeekly,sameFF,releaseInstant,reportKind,reportDate,officialActual,sortUnique,addVerifiedFedEvents,addRecurringCompanions,nameEvent,alignTradingCalendarNames,formatRecordedValue};
+module.exports._test={normalize,normalizeFF,applyFFWeekly,sameFF,redundantGenericRate,releaseInstant,reportKind,reportDate,officialActual,sortUnique,addVerifiedFedEvents,addRecurringCompanions,nameEvent,alignTradingCalendarNames,formatRecordedValue};
