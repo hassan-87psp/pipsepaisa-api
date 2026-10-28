@@ -300,7 +300,10 @@ async function getBls(kind,rapid=false){
 async function officialOverlay(events,now){
  const relevant=events.filter(e=>{
   const k=reportKind(e.title),t=Date.parse(e.date);
-  return e.country==='USD'&&k&&t>=now-24*3600000&&t<=now+10*60000;
+  // BLS publishes a dated report, which may be the last release in our 30-day
+  // archive. The exact release date is checked below before assigning Actual.
+  // Enrich only genuinely missing values, never overwrite provider figures.
+  return e.country==='USD'&&k&&!e.actual&&t>=now-30*DAY&&t<=now+10*60000;
  });
  if(!relevant.length)return false;
  const types=[...new Set(relevant.map(e=>reportKind(e.title)))];
