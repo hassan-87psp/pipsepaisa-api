@@ -62,26 +62,32 @@ function utcDay(iso){return iso.slice(0,10).replace(/-/g,'');}
 function isRate(e){return e.country==='USD'&&(e.seriesCode==='fomc'||
  /^FOMC Rate Decision\b|^Federal Funds Rate\b/i.test(e.title))&&
  !/\b(minutes|conference|speech|statement)\b/i.test(e.title);}
+function clearUnverifiedMetricValues(e){
+ // A broad report package is not an individual m/m, y/y or core series.
+ // Keep the release/time but wait for a source that names the precise metric.
+ e.forecast=''; e.previous=''; e.actual=''; e.actualSource=null;
+ delete e.forecastSource; delete e.previousSource;
+}
 function nameEvent(row){
  const e={...row};
  if(isRate(e)){e.sourceTitle=e.title;e.title='Federal Funds Rate';}
  else if(e.country==='USD'&&(e.seriesCode==='us-pce'||/US Personal Income and Outlays \(PCE\)/i.test(e.title))){
    e.sourceTitle=e.title;e.title='Core PCE Price Index m/m';
    // Monthly BEA package figures must never masquerade as core PCE actuals.
-   if(!/^Core PCE Price Index m\/m$/i.test(row.title)){e.actual='';e.actualSource=null;}
+   if(!/^Core PCE Price Index m\/m$/i.test(row.title))clearUnverifiedMetricValues(e);
    e.metricLabel='Core PCE excluding food and energy, monthly';
  }
  else if(e.country==='USD'&&(e.seriesCode==='us-nfp'||/US Employment Situation \(Non-Farm Payrolls\)/i.test(e.title))){
    e.sourceTitle=e.title;e.title='Non-Farm Employment Change';
    if(!/^Non-Farm Employment Change$/i.test(row.title)&&
-     !/^(jobs|thousand jobs)$/i.test(row.unit||'')){e.actual='';e.actualSource=null;}
+     !/^(jobs|thousand jobs)$/i.test(row.unit||''))clearUnverifiedMetricValues(e);
  }
  else if(e.country==='USD'&&(e.seriesCode==='us-cpi'||/US CPI Report/i.test(e.title))){
    e.sourceTitle=e.title;
    // CPI y/y reported in a calendar row is NOT the CPI m/m figure.
    const annual=/(?:%\s*y\/y|year.over.year|annual)/i.test(e.unit||'');
    e.title=annual?'CPI y/y':'CPI m/m';
-   if(!annual&&!/^CPI m\/m$/i.test(row.title)){e.actual='';e.actualSource=null;}
+   if(!annual&&!/^CPI m\/m$/i.test(row.title))clearUnverifiedMetricValues(e);
  }
  else if(e.country==='USD'&&(e.seriesCode==='us-gdp'||/US Gross Domestic Product/i.test(e.title))){
    e.sourceTitle=e.title;
@@ -89,7 +95,7 @@ function nameEvent(row){
    // Never call GDP 'Advance' unless stage is explicitly provided.
    e.title=stage==='advance'?'Advance GDP q/q':stage==='second'?'Prelim GDP q/q':
     stage==='third'?'Final GDP q/q':'GDP q/q';
-   if(!/\bGDP q\/q$/i.test(row.title)){e.actual='';e.actualSource=null;}
+   if(!/\bGDP q\/q$/i.test(row.title))clearUnverifiedMetricValues(e);
  }
  return e;
 }
@@ -152,11 +158,8 @@ function alignTradingCalendarNames(event){
   metricLabel:match.beaMetric?"Core PCE ex-food-and-energy m/m":match.name};
  if(match.beaMetric){
   // A package-level PCE actual cannot be displayed as Core PCE.
-  // Keep an actual ONLY when the upstream record explicitly names core PCE m/m.
-  if(!/^core pce price index m\/m$/i.test(event.sourceTitle||event.title)){
-   result.actual="";
-   result.actualSource=null;
-  }
+  // Generic release-package consensus and results cannot be assigned to core PCE.
+  if(!/^core pce price index m\/m$/i.test(event.sourceTitle||event.title))clearUnverifiedMetricValues(result);
   result.sourceUrl="https://www.bea.gov/data/personal-consumption-expenditures-price-index-excluding-food-and-energy";
  }else if(match.name==="Advance GDP q/q"){
   result.sourceUrl="https://www.bea.gov/news/schedule/full";
