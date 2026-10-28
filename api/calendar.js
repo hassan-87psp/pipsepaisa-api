@@ -326,7 +326,7 @@ async function officialOverlay(events,now){
 
 const FF_EXPORT='https://nfs.faireconomy.media/ff_calendar_thisweek.json';
 const FF_CREDIT='https://www.forexfactory.com/calendar';
-const FF_CACHE_MS=5*60*1000; // Refresh published consensus regularly, not once an hour.
+const FF_CACHE_MS=60*60*1000; // Forex Factory's weekly export is updated hourly and rate-limited.
 let ffWeeklyCache={at:0,rows:[]},ffWeeklyPending=null;
 function normalizeFF(x){
  if(!x||typeof x!=='object')return null;
