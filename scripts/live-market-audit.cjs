@@ -1,10 +1,12 @@
 // Live provider health audit. No credentials, no fabricated market data.
 'use strict';
 const base='https://pipsepaisa-api.vercel.app/api';
+let liveCalendarFeedHeader='';
 async function get(path){
  const response=await fetch(base+path,{signal:AbortSignal.timeout(45000),headers:{Accept:'application/json'}});
  const body=await response.json().catch(()=>null);
  if(!response.ok)throw Error(path+' HTTP '+response.status+' '+JSON.stringify(body).slice(0,180));
+ if(path==='/calendar')liveCalendarFeedHeader=response.headers.get('x-calendar-feed-checked-at')||'';
  return body;
 }
 async function main(){
@@ -12,6 +14,11 @@ async function main(){
  try {
   const events=await get('/calendar');
   report._eventCache=events;
+  const checkedAt=Date.parse(liveCalendarFeedHeader);
+  report.calendarFreshness={verifiedSourceCheckedAt:Number.isFinite(checkedAt)?new Date(checkedAt).toISOString():null,
+    ageMinutes:Number.isFinite(checkedAt)?Math.max(0,Math.round((Date.now()-checkedAt)/60000)):null};
+  if(!Number.isFinite(checkedAt))report.warnings.push('Production API is not yet exposing verified calendar source freshness header');
+  else if(Date.now()-checkedAt>20*60000)report.warnings.push('Calendar source cache last successful verification is more than 20 minutes old');
   if(!Array.isArray(events))throw Error('Calendar response is not an event array');
   const malformed=events.filter(x=>!x||!Number.isFinite(Date.parse(x.date))||!x.title||!x.country);
   if(malformed.length)throw Error(malformed.length+' calendar events have invalid structure');
