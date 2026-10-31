@@ -10,7 +10,7 @@ const BLS={
 };
 const CURRENCY={US:'USD',GB:'GBP',UK:'GBP',EU:'EUR',DE:'EUR',FR:'EUR',IT:'EUR',JP:'JPY',CA:'CAD',AU:'AUD',CN:'CNY',CH:'CHF',NZ:'NZD',NO:'NOK',SE:'SEK',IN:'INR',HK:'HKD'};
 const DAY=86400000;
-let scheduleCache={at:0,rows:[],error:null};
+let scheduleCache={at:0,verifiedAt:0,rows:[],error:null};
 let schedulePending=null;
 let blsCache=new Map();
 let blsDeniedUntil=new Map();
@@ -197,7 +197,7 @@ async function getSchedule(){
    }
    const normalized=sortUnique(events.map(normalize));
    if(!normalized.length)throw new Error('No timestamped events in feed');
-   scheduleCache={at:Date.now(),rows:normalized,error:null};
+   scheduleCache={at:Date.now(),verifiedAt:Date.now(),rows:normalized,error:null};
   }catch(e){
    scheduleCache={...scheduleCache,at:Date.now(),error:String(e.message||e).slice(0,140)};
   }
@@ -326,7 +326,8 @@ async function officialOverlay(events,now){
 
 const FF_EXPORT='https://nfs.faireconomy.media/ff_calendar_thisweek.json';
 const FF_CREDIT='https://www.forexfactory.com/calendar';
-const FF_CACHE_MS=60*60*1000; // Forex Factory's weekly export is updated hourly and rate-limited.
+const FF_CACHE_MS=60*60*1000; // Rate-limited free export. Normal cadence: hourly.
+const FF_RELEASE_CACHE_MS=5*60*1000; // Respect 2 requests/5min; only accelerate near high-impact releases.
 let ffWeeklyCache={at:0,rows:[]},ffWeeklyPending=null;
 function normalizeFF(x){
  if(!x||typeof x!=='object')return null;
@@ -343,8 +344,9 @@ function normalizeFF(x){
   actualSource:actual?FF_CREDIT:null,
   status:actual?'released':'confirmed',eventId:'ff-'+country+'-'+ts+'-'+title.toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,50)};
 }
-async function getFFWeekly(){
- if(ffWeeklyCache.at&&Date.now()-ffWeeklyCache.at<FF_CACHE_MS)return ffWeeklyCache.rows;
+async function getFFWeekly(nearRelease=false){
+ const ttl=nearRelease?FF_RELEASE_CACHE_MS:FF_CACHE_MS;
+ if(ffWeeklyCache.at&&Date.now()-ffWeeklyCache.at<ttl)return ffWeeklyCache.rows;
  if(ffWeeklyPending)return ffWeeklyPending;
  ffWeeklyPending=(async()=>{
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),4800);
@@ -455,15 +457,19 @@ function applyPrimaryReleasedActuals(events,now=Date.now()){
 module.exports=async function handler(req,res){
  res.setHeader('Access-Control-Allow-Origin','*');
  res.setHeader('Access-Control-Allow-Methods','GET, OPTIONS');
+ res.setHeader('Access-Control-Expose-Headers','X-Calendar-Feed-Checked-At, X-Calendar-Source');
  if(req.method==='OPTIONS')return res.status(200).end();
  if(req.method!=='GET')return res.status(405).json({error:'Method not allowed'});
  const now=Date.now();
- const [cache,ffRows]=await Promise.all([getSchedule(),getFFWeekly()]);
+ const cache=await getSchedule();
+ const nearHighImpact=cache.rows.some(e=>e.impact==='High'&&Math.abs(Date.parse(e.date)-now)<90*60000);
+ const ffRows=await getFFWeekly(nearHighImpact);
  const releaseWindow=cache.rows.some(e=>e.country==='USD'&&reportKind(e.title)
    &&Math.abs(Date.parse(e.date)-now)<90*60000);
  res.setHeader('Cache-Control',releaseWindow
     ?'public, s-maxage=10, stale-while-revalidate=10'
     :'public, s-maxage=90, stale-while-revalidate=60');
+ if(cache.verifiedAt)res.setHeader('X-Calendar-Feed-Checked-At',new Date(cache.verifiedAt).toISOString());
  res.setHeader('X-Calendar-Source',ffRows.length?'Finance-Calendar-ForexFactory-and-Official-BLS':'Finance-Calendar-and-Official-BLS');
  if(!cache.rows.length&&!ffRows.length)
    return res.status(503).json({error:'Verified calendar sources temporarily unavailable',events:[],source:'Finance Calendar / Forex Factory'});
