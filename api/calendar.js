@@ -324,47 +324,77 @@ async function officialOverlay(events,now){
  return enhanced;
 }
 
-const FF_EXPORT='https://nfs.faireconomy.media/ff_calendar_thisweek.json';
+const FF_EXPORTS={
+ thisweek:'https://nfs.faireconomy.media/ff_calendar_thisweek.json',
+ nextweek:'https://nfs.faireconomy.media/ff_calendar_nextweek.json'
+};
 const FF_CREDIT='https://www.forexfactory.com/calendar';
-const FF_CACHE_MS=60*60*1000; // Rate-limited free export. Normal cadence: hourly.
-const FF_RELEASE_CACHE_MS=5*60*1000; // Respect 2 requests/5min; only accelerate near high-impact releases.
-let ffWeeklyCache={at:0,verifiedAt:0,rows:[]},ffWeeklyPending=null;
-function normalizeFF(x){
+const FF_CACHE_MS=60*60*1000; // Public weekly export is rate-limited.
+const FF_RELEASE_CACHE_MS=5*60*1000; // Refresh current week during critical releases.
+const ffWeekCache={
+ thisweek:{at:0,verifiedAt:0,rows:[],status:'not-checked'},
+ nextweek:{at:0,verifiedAt:0,rows:[],status:'not-checked'}
+};
+const ffWeekPending={thisweek:null,nextweek:null};
+function ffWeekStart(now=Date.now(),weekOffset=0) {
+ // Forex Factory calendar uses Sunday-Saturday, in America/New_York.
+ const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'})
+  .formatToParts(new Date(now));
+ const field=t=>parts.find(p=>p.type===t).value;
+ const midnight=Date.parse(field('year')+'-'+field('month')+'-'+field('day')+'T12:00:00Z');
+ const weekday=new Date(midnight).getUTCDay();
+ return new Date(midnight-weekday*DAY+weekOffset*7*DAY).toISOString().slice(0,10);
+}
+function ffRowInWeek(row,kind,now=Date.now()) {
+ const d=Date.parse(row.date);
+ if(!Number.isFinite(d))return false;
+ return ffWeekStart(d)===ffWeekStart(now,kind==='nextweek'?1:0);
+}
+function normalizeFF(x,now=Date.now()){
  if(!x||typeof x!=='object')return null;
  const ts=Date.parse(x.date||''),country=nonempty(x.country,3).toUpperCase(),title=nonempty(x.title,180);
  if(!Number.isFinite(ts)||!title||!/^[A-Z]{3}$/.test(country))return null;
  const impact=String(x.impact||'').toLowerCase();
- // Use only Forex Factory's published Actual field after the release timestamp.
- // Never infer a result from forecast/previous or show future placeholders as Actual.
  const rawActual=nonempty(x.actual);
- const actual=ts<=Date.now() && rawActual && !/^(?:-|--|—|n\/a|pending|tbd)$/i.test(rawActual)?rawActual:'';
+ const actual=ts<=now && rawActual && !/^(?:-|--|—|n\/a|pending|tbd)$/i.test(rawActual)?rawActual:'';
  return {date:new Date(ts).toISOString(),country,title,impact:impact==='high'?'High':impact==='medium'?'Medium':impact==='holiday'?'Holiday':'Low',
   forecast:nonempty(x.forecast),previous:nonempty(x.previous),actual,
   source:'Forex Factory',sourceUrl:FF_CREDIT,forecastSource:FF_CREDIT,previousSource:FF_CREDIT,
   actualSource:actual?FF_CREDIT:null,
   status:actual?'released':'confirmed',eventId:'ff-'+country+'-'+ts+'-'+title.toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,50)};
 }
-async function getFFWeekly(nearRelease=false){
- const ttl=nearRelease?FF_RELEASE_CACHE_MS:FF_CACHE_MS;
- if(ffWeeklyCache.at&&Date.now()-ffWeeklyCache.at<ttl)return ffWeeklyCache.rows;
- if(ffWeeklyPending)return ffWeeklyPending;
- ffWeeklyPending=(async()=>{
+async function getFFWeek(kind,nearRelease=false){
+ const cache=ffWeekCache[kind];
+ if(!cache)throw Error('Unknown Forex Factory week');
+ // Two weekly exports at most on cold start; do not retry 404 or 429 continuously.
+ // The current-week file can refresh every 5m near releases, next-week remains hourly.
+ const ttl=nearRelease && kind==='thisweek'?FF_RELEASE_CACHE_MS:FF_CACHE_MS;
+ if(cache.at&&Date.now()-cache.at<ttl)
+  return cache.rows.filter(row=>ffRowInWeek(row,kind));
+ if(ffWeekPending[kind])return ffWeekPending[kind];
+ ffWeekPending[kind]=(async()=>{
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),4800);
   try{
-   const response=await fetch(FF_EXPORT,{signal:controller.signal,headers:{Accept:'application/json'}});
-   if(!response.ok)throw Error('FF export HTTP '+response.status);
+   const response=await fetch(FF_EXPORTS[kind],{signal:controller.signal,headers:{Accept:'application/json'}});
+   if(!response.ok)throw Error('FF '+kind+' HTTP '+response.status);
    const raw=await response.json();
-   if(!Array.isArray(raw))throw Error('Invalid FF JSON');
-   const rows=raw.slice(0,220).map(normalizeFF).filter(Boolean);
-   if(!rows.length)throw Error('Empty FF export');
-   ffWeeklyCache={at:Date.now(),verifiedAt:Date.now(),rows};
-  }catch(_){
-   // Do not repeatedly hammer Forex Factory (2 export requests / 5 minutes).
-   ffWeeklyCache={...ffWeeklyCache,at:Date.now()};
+   if(!Array.isArray(raw))throw Error('FF '+kind+' invalid JSON');
+   const normalized=raw.slice(0,350).map(x=>normalizeFF(x)).filter(Boolean);
+   // Fail closed when an export still contains the last week's data.
+   const rows=normalized.filter(row=>ffRowInWeek(row,kind));
+   if(!rows.length)throw Error('FF '+kind+' empty or stale week');
+   ffWeekCache[kind]={at:Date.now(),verifiedAt:Date.now(),rows,status:'available'};
+  }catch(e){
+   ffWeekCache[kind]={...ffWeekCache[kind],at:Date.now(),status:'unavailable'};
   }finally{clearTimeout(timer);}
-  return ffWeeklyCache.rows;
- })().finally(()=>{ffWeeklyPending=null});
- return ffWeeklyPending;
+  return ffWeekCache[kind].rows.filter(row=>ffRowInWeek(row,kind));
+ })().finally(()=>{ffWeekPending[kind]=null});
+ return ffWeekPending[kind];
+}
+async function getFFWeekly(nearRelease=false){
+ // Fetch both official weekly exports; nextweek can return 404 before publication.
+ const [current,next]=await Promise.all([getFFWeek('thisweek',nearRelease),getFFWeek('nextweek')]);
+ return sortUnique([...current,...next]);
 }
 function sameFF(a,b){
  if(a.country!==b.country||Math.abs(Date.parse(a.date)-Date.parse(b.date))>4*60000)return false;
@@ -406,6 +436,13 @@ function applyFFWeekly(events,weekly){
    if(redundantGenericRate(out[i],row))out.splice(i,1);
   const match=out.find(x=>sameFF(x,row));
   if(!match){out.push(row);continue;}
+  // Use the precise Forex Factory event name for every confidently matched
+  // event; retain original provider title for debugging and source tracing.
+  if(match.title!==row.title){
+   match.providerTitle=match.title;
+   match.title=row.title;
+  }
+  match.ffMatched=true;
   // Forex Factory is authoritative for its published Forecast/Previous on the
   // SAME date, country and precise event title (or an explicit safe alias).
   // The generic schedule feed can hold an older consensus; do not preserve it.
@@ -482,7 +519,7 @@ function stripPrematureActuals(events,now=Date.now()){
 module.exports=async function handler(req,res){
  res.setHeader('Access-Control-Allow-Origin','*');
  res.setHeader('Access-Control-Allow-Methods','GET, OPTIONS');
- res.setHeader('Access-Control-Expose-Headers','X-Calendar-Feed-Checked-At, X-Calendar-Source');
+ res.setHeader('Access-Control-Expose-Headers','X-Calendar-Feed-Checked-At, X-Calendar-Source, X-Calendar-FF-ThisWeek-Status, X-Calendar-FF-NextWeek-Status');
  if(req.method==='OPTIONS')return res.status(200).end();
  if(req.method!=='GET')return res.status(405).json({error:'Method not allowed'});
  const now=Date.now();
@@ -493,8 +530,10 @@ module.exports=async function handler(req,res){
  res.setHeader('Cache-Control',releaseWindow
     ?'public, s-maxage=10, stale-while-revalidate=10'
     :'public, s-maxage=90, stale-while-revalidate=60');
- const verifiedAt=Math.max(cache.verifiedAt||0,ffWeeklyCache.verifiedAt||0);
+ const verifiedAt=Math.max(cache.verifiedAt||0,ffWeekCache.thisweek.verifiedAt||0,ffWeekCache.nextweek.verifiedAt||0);
  if(verifiedAt)res.setHeader('X-Calendar-Feed-Checked-At',new Date(verifiedAt).toISOString());
+ res.setHeader('X-Calendar-FF-ThisWeek-Status',ffWeekCache.thisweek.status);
+ res.setHeader('X-Calendar-FF-NextWeek-Status',ffWeekCache.nextweek.status);
  res.setHeader('X-Calendar-Source',ffRows.length?'Finance-Calendar-ForexFactory-and-Official-BLS':'Finance-Calendar-and-Official-BLS');
  if(!cache.rows.length&&!ffRows.length)
    return res.status(503).json({error:'Verified calendar sources temporarily unavailable',events:[],source:'Finance Calendar / Forex Factory'});
@@ -505,4 +544,4 @@ module.exports=async function handler(req,res){
  return res.status(200).json(verified);
 };
 // Export only pure helpers for local deterministic testing; no network requests during import.
-module.exports._test={normalize,normalizeFF,applyFFWeekly,applyPrimaryReleasedActuals,removeEmptyCpiPackages,stripPrematureActuals,sameFF,redundantGenericRate,releaseInstant,reportKind,reportDate,officialActual,sortUnique,addVerifiedFedEvents,addRecurringCompanions,nameEvent,alignTradingCalendarNames,formatRecordedValue};
+module.exports._test={ffWeekStart,ffRowInWeek,normalize,normalizeFF,applyFFWeekly,applyPrimaryReleasedActuals,removeEmptyCpiPackages,stripPrematureActuals,sameFF,redundantGenericRate,releaseInstant,reportKind,reportDate,officialActual,sortUnique,addVerifiedFedEvents,addRecurringCompanions,nameEvent,alignTradingCalendarNames,formatRecordedValue};
