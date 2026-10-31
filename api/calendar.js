@@ -438,7 +438,7 @@ const PRIMARY_RELEASE_ACTUALS=[
  {country:'CAD',date:'2026-10-28T13:45:00.000Z',title:'Overnight Rate',actual:'2.50%',
   source:'Bank of Canada',url:'https://www.bankofcanada.ca/2026/10/fad-press-release-2026-10-28/'},
  {country:'EUR',date:'2026-10-29T13:15:00.000Z',title:'Main Refinancing Rate',actual:'2.65%',
-  source:'European Central Bank',url:'https://www.ecb.europa.eu/press/pr/date/2026/html/ecb.mp261029~9a493adf17.en.html'},
+  source:'European Central Bank',url:'https://www.ecb.europa.eu/press/press_conference/html/index.en.html?date=2026-10-29'},
  {country:'AUD',date:'2026-10-28T00:30:00.000Z',title:'CPI m/m',actual:'0.8%',
   source:'Australian Bureau of Statistics',
   url:'https://www.abs.gov.au/statistics/economy/price-indexes-and-inflation/consumer-price-index-australia/sep-2026'},
