@@ -35,7 +35,7 @@ function formatRecordedValue(value,unit){
  if(u.startsWith('%') && /^[-+]?\d+(?:\.\d+)?$/.test(raw))return raw+'%';
  return raw;
 }
-function normalize(row){
+function normalize(row,now=Date.now()){
   if(!row||typeof row!=='object'||row.status==='cancelled')return null;
   const timestamp=releaseInstant(row);
   if(!Number.isFinite(timestamp))return null;
@@ -45,13 +45,13 @@ function normalize(row){
   if(!title||!currency)return null;
   const impact=String(row.impact||'').toLowerCase();
   const unit=nonempty(row.unit,30);
-  const actual=formatRecordedValue(row.actual,unit);
+  const actual=timestamp<=now?formatRecordedValue(row.actual,unit):''; // Never display provider Actual before scheduled release.
   return {date:new Date(timestamp).toISOString(),title,country:currency,
     impact:impact==='high'?'High':impact==='medium'?'Medium':'Low',
     forecast:formatRecordedValue(row.consensus??row.forecast,unit),
     previous:formatRecordedValue(row.prior??row.previous,unit),
     actual,unit,source:'Finance Calendar',sourceUrl:nonempty(row.source_url||row.url,500),
-    status:nonempty(row.status,30),actualSource:actual?'Finance Calendar':null,
+    status:actual?'released':(timestamp>now&&row.status==='released'?'confirmed':nonempty(row.status,30)),actualSource:actual?'Finance Calendar':null,
     seriesCode:nonempty(row.series_code,90),eventId:nonempty(row.id,140),
     releaseStage:nonempty(row.release_stage,40),period:nonempty(row.period,60),
     timeRole:nonempty(row.time_role,40),lastVerifiedAt:nonempty(row.last_verified_at,60)};
@@ -328,7 +328,7 @@ const FF_EXPORT='https://nfs.faireconomy.media/ff_calendar_thisweek.json';
 const FF_CREDIT='https://www.forexfactory.com/calendar';
 const FF_CACHE_MS=60*60*1000; // Rate-limited free export. Normal cadence: hourly.
 const FF_RELEASE_CACHE_MS=5*60*1000; // Respect 2 requests/5min; only accelerate near high-impact releases.
-let ffWeeklyCache={at:0,rows:[]},ffWeeklyPending=null;
+let ffWeeklyCache={at:0,verifiedAt:0,rows:[]},ffWeeklyPending=null;
 function normalizeFF(x){
  if(!x||typeof x!=='object')return null;
  const ts=Date.parse(x.date||''),country=nonempty(x.country,3).toUpperCase(),title=nonempty(x.title,180);
@@ -357,10 +357,10 @@ async function getFFWeekly(nearRelease=false){
    if(!Array.isArray(raw))throw Error('Invalid FF JSON');
    const rows=raw.slice(0,220).map(normalizeFF).filter(Boolean);
    if(!rows.length)throw Error('Empty FF export');
-   ffWeeklyCache={at:Date.now(),rows};
+   ffWeeklyCache={at:Date.now(),verifiedAt:Date.now(),rows};
   }catch(_){
    // Do not repeatedly hammer Forex Factory (2 export requests / 5 minutes).
-   ffWeeklyCache={at:Date.now(),rows:ffWeeklyCache.rows};
+   ffWeeklyCache={...ffWeeklyCache,at:Date.now()};
   }finally{clearTimeout(timer);}
   return ffWeeklyCache.rows;
  })().finally(()=>{ffWeeklyPending=null});
@@ -454,6 +454,22 @@ function applyPrimaryReleasedActuals(events,now=Date.now()){
  });
 }
 
+// Suppress an unvalued report-package label when specific dated CPI metrics
+// exist at the exact same release time; retain distinct monetary statements.
+function removeEmptyCpiPackages(events){
+ return events.filter(e=>{
+  if(e.country!=='AUD'||!/^(?:Australia|Australian) CPI:/i.test(e.title)||e.actual||e.forecast||e.previous)return true;
+  return !events.some(x=>x!==e&&x.country===e.country&&x.date===e.date&&
+    /^(?:CPI m\/m|CPI y\/y|Trimmed Mean CPI m\/m)$/i.test(x.title));
+ });
+}
+function stripPrematureActuals(events,now=Date.now()){
+ return events.map(e=>{
+  if(Date.parse(e.date)<=now||!e.actual)return e;
+  return {...e,actual:'',actualSource:null,actualSourceUrl:null,
+    status:e.status==='released'?'confirmed':e.status};
+ });
+}
 module.exports=async function handler(req,res){
  res.setHeader('Access-Control-Allow-Origin','*');
  res.setHeader('Access-Control-Allow-Methods','GET, OPTIONS');
@@ -464,20 +480,20 @@ module.exports=async function handler(req,res){
  const cache=await getSchedule();
  const nearHighImpact=cache.rows.some(e=>e.impact==='High'&&Math.abs(Date.parse(e.date)-now)<90*60000);
  const ffRows=await getFFWeekly(nearHighImpact);
- const releaseWindow=cache.rows.some(e=>e.country==='USD'&&reportKind(e.title)
-   &&Math.abs(Date.parse(e.date)-now)<90*60000);
+ const releaseWindow=nearHighImpact||ffRows.some(e=>e.impact==='High'&&Math.abs(Date.parse(e.date)-now)<90*60000);
  res.setHeader('Cache-Control',releaseWindow
     ?'public, s-maxage=10, stale-while-revalidate=10'
     :'public, s-maxage=90, stale-while-revalidate=60');
- if(cache.verifiedAt)res.setHeader('X-Calendar-Feed-Checked-At',new Date(cache.verifiedAt).toISOString());
+ const verifiedAt=Math.max(cache.verifiedAt||0,ffWeeklyCache.verifiedAt||0);
+ if(verifiedAt)res.setHeader('X-Calendar-Feed-Checked-At',new Date(verifiedAt).toISOString());
  res.setHeader('X-Calendar-Source',ffRows.length?'Finance-Calendar-ForexFactory-and-Official-BLS':'Finance-Calendar-and-Official-BLS');
  if(!cache.rows.length&&!ffRows.length)
    return res.status(503).json({error:'Verified calendar sources temporarily unavailable',events:[],source:'Finance Calendar / Forex Factory'});
  const events=applyFFWeekly(addVerifiedFedEvents(cache.rows.filter(e=>Date.parse(e.date)>=now-30*DAY&&Date.parse(e.date)<=now+21*DAY).map(e=>({...e}))).map(alignTradingCalendarNames),ffRows);
  await officialOverlay(events,now);
- const verified=applyPrimaryReleasedActuals(events,now);
- // Existing site expects an array; these are verified provider rows, not demo data.
+ const verified=stripPrematureActuals(removeEmptyCpiPackages(applyPrimaryReleasedActuals(events,now)),now);
+ // Existing site expects an array; never pass future Actual or unvalued duplicate packages.
  return res.status(200).json(verified);
 };
 // Export only pure helpers for local deterministic testing; no network requests during import.
-module.exports._test={normalize,normalizeFF,applyFFWeekly,applyPrimaryReleasedActuals,sameFF,redundantGenericRate,releaseInstant,reportKind,reportDate,officialActual,sortUnique,addVerifiedFedEvents,addRecurringCompanions,nameEvent,alignTradingCalendarNames,formatRecordedValue};
+module.exports._test={normalize,normalizeFF,applyFFWeekly,applyPrimaryReleasedActuals,removeEmptyCpiPackages,stripPrematureActuals,sameFF,redundantGenericRate,releaseInstant,reportKind,reportDate,officialActual,sortUnique,addVerifiedFedEvents,addRecurringCompanions,nameEvent,alignTradingCalendarNames,formatRecordedValue};
