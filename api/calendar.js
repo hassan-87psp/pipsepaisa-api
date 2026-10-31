@@ -430,6 +430,15 @@ function applyFFWeekly(events,weekly){
 // forecast-derived figures, and cannot match any other date/month or metric.
 // For future releases, use the verified provider source and await publication.
 const PRIMARY_RELEASE_ACTUALS=[
+ // Date-locked central-bank Actuals independently verified from their original 2026 decisions.
+ // Fed's 4.00% is the upper bound of its official 3.75%-4.00% target range,
+ // matching the Federal Funds Rate single-value calendar convention.
+ {country:'USD',date:'2026-10-28T18:00:00.000Z',title:'Federal Funds Rate',actual:'4.00%',
+  source:'US Federal Reserve',url:'https://www.federalreserve.gov/newsevents/pressreleases/monetary20261028a.htm'},
+ {country:'CAD',date:'2026-10-28T13:45:00.000Z',title:'Overnight Rate',actual:'2.50%',
+  source:'Bank of Canada',url:'https://www.bankofcanada.ca/2026/10/fad-press-release-2026-10-28/'},
+ {country:'EUR',date:'2026-10-29T13:15:00.000Z',title:'Main Refinancing Rate',actual:'2.65%',
+  source:'European Central Bank',url:'https://www.ecb.europa.eu/press/pr/date/2026/html/ecb.mp261029~9a493adf17.en.html'},
  {country:'AUD',date:'2026-10-28T00:30:00.000Z',title:'CPI m/m',actual:'0.8%',
   source:'Australian Bureau of Statistics',
   url:'https://www.abs.gov.au/statistics/economy/price-indexes-and-inflation/consumer-price-index-australia/sep-2026'},
