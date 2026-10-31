@@ -1,0 +1,50 @@
+name: Economic Calendar Rolling Weekly Sync Audit
+
+on:
+  schedule:
+    - cron: '17 1,7,13,19 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'api/calendar.js'
+      - 'scripts/calendar-week-parity.cjs'
+      - 'tests/calendar-week-sync.test.cjs'
+      - 'tests/calendar-integrity.test.cjs'
+      - '.github/workflows/economic-calendar-weekly-sync.yml'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  calendar-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Calendar source and DST unit tests
+        run: npm test
+      - name: Compare deployed calendar with both Forex Factory weekly exports
+        run: node scripts/calendar-week-parity.cjs
+      - name: Raise or update a single actionable issue if production parity fails
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_LINK: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          title="Economic Calendar automatic parity failure"
+          existing="$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number' || true)"
+          body="Scheduled economic calendar validation failed. Review the Next Week / This Week published Forex Factory comparisons and live deployed API. Workflow: $RUN_LINK"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
