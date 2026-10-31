@@ -49,3 +49,23 @@ test('Forex Factory event matching requires exact timestamp/currency/metric iden
   assert.equal(calendar.sameFF(monthly,other),false);
   assert.equal(calendar.sameFF(monthly,{...monthly}),true);
 });
+
+test('October 2026 central-bank Actual values match date-locked official records',()=>{
+ const now=Date.parse('2026-10-31T00:00:00Z');
+ const cases=[
+  {date:'2026-10-28T18:00:00.000Z',country:'USD',title:'Federal Funds Rate',actual:'4.00%',source:'US Federal Reserve'},
+  {date:'2026-10-28T13:45:00.000Z',country:'CAD',title:'Overnight Rate',actual:'2.50%',source:'Bank of Canada'},
+  {date:'2026-10-29T13:15:00.000Z',country:'EUR',title:'Main Refinancing Rate',actual:'2.65%',source:'European Central Bank'}
+ ];
+ for(const row of cases){
+  const clean={...row,actual:''};
+  const actual=calendar.applyPrimaryReleasedActuals([clean],now)[0];
+  assert.equal(actual.actual,row.actual,row.country);
+  assert.equal(actual.actualSource,row.source,row.country);
+  assert.ok(/^https:\/\//.test(actual.actualSourceUrl),row.country);
+  const before=calendar.applyPrimaryReleasedActuals([clean],Date.parse(row.date)-1000)[0];
+  assert.equal(before.actual,'','Never release a backfill early');
+  const changedDate=calendar.applyPrimaryReleasedActuals([{...clean,date:'2026-11-05T13:30:00.000Z'}],now)[0];
+  assert.equal(changedDate.actual,'','Do not reuse another release date');
+ }
+});
