@@ -443,6 +443,7 @@ function applyFFWeekly(events,weekly){
    match.title=row.title;
   }
   match.ffMatched=true;
+  match.impact=row.impact; // Forex Factory event impact takes precedence when verified.
   // Forex Factory is authoritative for its published Forecast/Previous on the
   // SAME date, country and precise event title (or an explicit safe alias).
   // The generic schedule feed can hold an older consensus; do not preserve it.
@@ -457,7 +458,7 @@ function applyFFWeekly(events,weekly){
   }else if(row.previous&&!match.previousSource){
    match.previousSource=FF_CREDIT;
   }
-  if(!match.actual&&row.actual){match.actual=row.actual;match.actualSource=FF_CREDIT;}
+  if(!match.actual&&row.actual){match.actual=row.actual;match.actualSource=FF_CREDIT;match.status='released';}
  }
  return sortUnique(out);
 }
