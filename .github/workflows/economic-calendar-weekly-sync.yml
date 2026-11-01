@@ -9,12 +9,14 @@ on:
     paths:
       - 'api/calendar.js'
       - 'scripts/calendar-week-parity.cjs'
+      - 'scripts/calendar-nextweek-snapshot.cjs'
+      - 'scripts/live-calendar-frontend-smoke.cjs'
       - 'tests/calendar-week-sync.test.cjs'
       - 'tests/calendar-integrity.test.cjs'
       - '.github/workflows/economic-calendar-weekly-sync.yml'
 
 permissions:
-  contents: read
+  contents: write
   issues: write
 
 jobs:
@@ -32,6 +34,19 @@ jobs:
         run: npm test
       - name: Compare deployed calendar with both Forex Factory weekly exports
         run: node scripts/calendar-week-parity.cjs
+      - name: Read-only production frontend calendar smoke
+        run: node scripts/live-calendar-frontend-smoke.cjs
+      - name: Refresh verified next-week Forex Factory snapshot
+        if: always()
+        run: |
+          node scripts/calendar-nextweek-snapshot.cjs
+          if [ -f data/ff-nextweek-snapshot.json ]; then
+            git add data/ff-nextweek-snapshot.json
+            if ! git diff --cached --quiet; then
+              git -c user.name="pipsepaisa-calendar-bot" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "Refresh verified Forex Factory next-week snapshot"
+              git push origin HEAD:main
+            fi
+          fi
       - name: Raise or update a single actionable issue if production parity fails
         if: failure()
         env:
