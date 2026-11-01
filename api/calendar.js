@@ -363,6 +363,99 @@ function normalizeFF(x,now=Date.now()){
   actualSource:actual?FF_CREDIT:null,
   status:actual?'released':'confirmed',eventId:'ff-'+country+'-'+ts+'-'+title.toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,50)};
 }
+// Forex Factory's next-week JSON frequently returns 404, but a dated HTML
+// calendar can be published. Only parse timestamped rows with a declared IANA
+// calendar timezone. Never infer Tentative/All Day or fabricated result values.
+function ffDatedWeekURL(now=Date.now(),offset=1){
+ const [y,m,d]=ffWeekStart(now,offset).split('-').map(Number);
+ const mon=new Date(Date.UTC(y,m-1,d)).toLocaleString('en-US',{month:'short',timeZone:'UTC'}).toLowerCase();
+ return 'https://www.forexfactory.com/calendar?week='+mon+d+'.'+y;
+}
+function ffPlain(value){
+ return String(value||'').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,' ')
+  .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi,' ')
+  .replace(/<[^>]*>/g,' ').replace(/&nbsp;|&#160;/gi,' ')
+  .replace(/&amp;/gi,'&').replace(/&lt;/gi,'<').replace(/&gt;/gi,'>')
+  .replace(/&quot;/gi,'"').replace(/&#0?39;|&apos;/gi,"'")
+  .replace(/\s+/g,' ').trim();
+}
+function ffHtmlCell(row,field){
+ const re=new RegExp('<td\\b[^>]*class="[^"]*\\bcalendar__'+field+'\\b[^"]*"[^>]*>([\\s\\S]*?)<\\/td>','i');
+ const m=row.match(re);
+ return m?ffPlain(m[1]):'';
+}
+function ffCalendarDate(monthDay,weekStart){
+ const md=String(monthDay||'').match(/\b([A-Z][a-z]{2})\s+(\d{1,2})\b/);
+ if(!md)return '';
+ const year=Number(weekStart.slice(0,4)),start=Date.parse(weekStart+'T12:00:00Z');
+ const months={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+ const month=months[md[1]];if(month===undefined)return '';
+ const choices=[year-1,year,year+1].map(y=>Date.UTC(y,month,Number(md[2]),12));
+ choices.sort((a,b)=>Math.abs(a-start)-Math.abs(b-start));
+ if(Math.abs(choices[0]-start)>8*DAY)return '';
+ return new Date(choices[0]).toISOString().slice(0,10);
+}
+function ffLocalToUTC(localDay,time,zone){
+ const m=String(time||'').match(/^(1[0-2]|0?[1-9]):([0-5]\d)\s*(am|pm)$/i);
+ if(!m||!localDay||!zone)return '';
+ let hh=Number(m[1])%12+(m[3].toLowerCase()==='pm'?12:0);
+ const [y,mo,d]=localDay.split('-').map(Number),mi=Number(m[2]);
+ const target=Date.UTC(y,mo-1,d,hh,mi);
+ const fmt=new Intl.DateTimeFormat('en-US',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',
+  hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+ const localAt=ts=>{
+  const parts=fmt.formatToParts(new Date(ts)),val=k=>Number(parts.find(p=>p.type===k)?.value);
+  return Date.UTC(val('year'),val('month')-1,val('day'),val('hour'),val('minute'));
+ };
+ let utc=target;
+ for(let i=0;i<3;i++)utc+=target-localAt(utc);
+ if(localAt(utc)!==target)return ''; // DST gap/ambiguous time: fail closed.
+ return new Date(utc).toISOString();
+}
+function parseFFWeekHTML(html,now=Date.now(),kind='nextweek'){
+ if(typeof html!=='string'||html.length>1500000)return [];
+ const timezone=html.match(/Calendar Time Zone:\s*([A-Za-z_]+\/[A-Za-z_]+)/i)?.[1];
+ if(!timezone)return [];
+ try{new Intl.DateTimeFormat('en-US',{timeZone:timezone});}catch(_){return [];}
+ const sunday=ffWeekStart(now,kind==='nextweek'?1:0);
+ const rows=html.match(/<tr\b[^>]*\bcalendar__row\b[^>]*>[\s\S]*?<\/tr>/gi)||[];
+ let localDay='',lastTime='';
+ const out=[];
+ for(const row of rows){
+  if(/calendar__row--day-breaker/i.test(row)){
+   const label=ffPlain(row);
+   localDay=ffCalendarDate(label,sunday)||localDay;
+   lastTime='';
+   continue;
+  }
+  const dateCell=ffHtmlCell(row,'date');
+  if(dateCell){localDay=ffCalendarDate(dateCell,sunday)||localDay;lastTime='';}
+  if(!/calendar__event-title\b/.test(row))continue;
+  const t=ffHtmlCell(row,'time');
+  if(t)lastTime=/^(1[0-2]|0?[1-9]):[0-5]\d\s*(?:am|pm)$/i.test(t)?t:'';
+  if(!lastTime||!localDay)continue;
+  const title=ffPlain(row.match(/<span\b[^>]*class="[^"]*\bcalendar__event-title\b[^"]*"[^>]*>([\s\S]*?)<\/span>/i)?.[1]);
+  const country=ffHtmlCell(row,'currency');
+  const impact=ffHtmlCell(row,'impact')||row.match(/ff-impact-(red|ora|yel|gry)/i)?.[1];
+  const instant=ffLocalToUTC(localDay,lastTime,timezone);
+  if(!title||!instant||!/^[A-Z]{3}$/.test(country)||!ffRowInWeek({date:instant},kind,now))continue;
+  const icon=row.match(/ff-impact-(red|ora|yel|gry)/i)?.[1]?.toLowerCase();
+  const severity=icon==='red'?'High':icon==='ora'?'Medium':icon==='yel'?'Low':'Holiday';
+  out.push(normalizeFF({date:instant,country,title,impact:severity,
+   forecast:ffHtmlCell(row,'forecast'),previous:ffHtmlCell(row,'previous'),
+   actual:ffHtmlCell(row,'actual')},now));
+ }
+ return sortUnique(out.filter(Boolean));
+}
+async function getFFDatedWeek(now=Date.now()){
+ const url=ffDatedWeekURL(now,1);
+ const response=await timedFetch(url,8000);
+ if(!response.ok)throw Error('FF dated calendar HTTP '+response.status);
+ const html=await response.text();
+ const rows=parseFFWeekHTML(html,now,'nextweek');
+ if(rows.length<5)throw Error('FF dated calendar has too few verifiable rows');
+ return rows;
+}
 async function getFFWeek(kind,nearRelease=false){
  const cache=ffWeekCache[kind];
  if(!cache)throw Error('Unknown Forex Factory week');
@@ -375,15 +468,23 @@ async function getFFWeek(kind,nearRelease=false){
  ffWeekPending[kind]=(async()=>{
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),4800);
   try{
-   const response=await fetch(FF_EXPORTS[kind],{signal:controller.signal,headers:{Accept:'application/json'}});
-   if(!response.ok)throw Error('FF '+kind+' HTTP '+response.status);
-   const raw=await response.json();
-   if(!Array.isArray(raw))throw Error('FF '+kind+' invalid JSON');
-   const normalized=raw.slice(0,350).map(x=>normalizeFF(x)).filter(Boolean);
-   // Fail closed when an export still contains the last week's data.
-   const rows=normalized.filter(row=>ffRowInWeek(row,kind));
+   let rows,provider='json';
+   if(kind==='nextweek'){
+    // Dated Forex Factory page is available before the nextweek JSON export.
+    // Prefer its exact names/figures, falling back to JSON if page is blocked.
+    try{rows=await getFFDatedWeek();provider='dated-html';}
+    catch(_){rows=null;}
+   }
+   if(!rows){
+    const response=await fetch(FF_EXPORTS[kind],{signal:controller.signal,headers:{Accept:'application/json'}});
+    if(!response.ok)throw Error('FF '+kind+' HTTP '+response.status);
+    const raw=await response.json();
+    if(!Array.isArray(raw))throw Error('FF '+kind+' invalid JSON');
+    const normalized=raw.slice(0,350).map(x=>normalizeFF(x)).filter(Boolean);
+    rows=normalized.filter(row=>ffRowInWeek(row,kind));
+   }
    if(!rows.length)throw Error('FF '+kind+' empty or stale week');
-   ffWeekCache[kind]={at:Date.now(),verifiedAt:Date.now(),rows,status:'available'};
+   ffWeekCache[kind]={at:Date.now(),verifiedAt:Date.now(),rows,status:'available',provider,weekStart:ffWeekStart(Date.now(),kind==='nextweek'?1:0)};
   }catch(e){
    ffWeekCache[kind]={...ffWeekCache[kind],at:Date.now(),status:'unavailable'};
   }finally{clearTimeout(timer);}
@@ -520,7 +621,7 @@ function stripPrematureActuals(events,now=Date.now()){
 module.exports=async function handler(req,res){
  res.setHeader('Access-Control-Allow-Origin','*');
  res.setHeader('Access-Control-Allow-Methods','GET, OPTIONS');
- res.setHeader('Access-Control-Expose-Headers','X-Calendar-Feed-Checked-At, X-Calendar-Source, X-Calendar-FF-ThisWeek-Status, X-Calendar-FF-NextWeek-Status');
+ res.setHeader('Access-Control-Expose-Headers','X-Calendar-Feed-Checked-At, X-Calendar-Source, X-Calendar-FF-ThisWeek-Status, X-Calendar-FF-NextWeek-Status, X-Calendar-FF-NextWeek-Provider');
  if(req.method==='OPTIONS')return res.status(200).end();
  if(req.method!=='GET')return res.status(405).json({error:'Method not allowed'});
  const now=Date.now();
@@ -535,6 +636,7 @@ module.exports=async function handler(req,res){
  if(verifiedAt)res.setHeader('X-Calendar-Feed-Checked-At',new Date(verifiedAt).toISOString());
  res.setHeader('X-Calendar-FF-ThisWeek-Status',ffWeekCache.thisweek.status);
  res.setHeader('X-Calendar-FF-NextWeek-Status',ffWeekCache.nextweek.status);
+ res.setHeader('X-Calendar-FF-NextWeek-Provider',ffWeekCache.nextweek.provider||'none');
  res.setHeader('X-Calendar-Source',ffRows.length?'Finance-Calendar-ForexFactory-and-Official-BLS':'Finance-Calendar-and-Official-BLS');
  if(!cache.rows.length&&!ffRows.length)
    return res.status(503).json({error:'Verified calendar sources temporarily unavailable',events:[],source:'Finance Calendar / Forex Factory'});
@@ -545,4 +647,4 @@ module.exports=async function handler(req,res){
  return res.status(200).json(verified);
 };
 // Export only pure helpers for local deterministic testing; no network requests during import.
-module.exports._test={ffWeekStart,ffRowInWeek,normalize,normalizeFF,applyFFWeekly,applyPrimaryReleasedActuals,removeEmptyCpiPackages,stripPrematureActuals,sameFF,redundantGenericRate,releaseInstant,reportKind,reportDate,officialActual,sortUnique,addVerifiedFedEvents,addRecurringCompanions,nameEvent,alignTradingCalendarNames,formatRecordedValue};
+module.exports._test={ffWeekStart,ffRowInWeek,parseFFWeekHTML,ffLocalToUTC,ffDatedWeekURL,normalize,normalizeFF,applyFFWeekly,applyPrimaryReleasedActuals,removeEmptyCpiPackages,stripPrematureActuals,sameFF,redundantGenericRate,releaseInstant,reportKind,reportDate,officialActual,sortUnique,addVerifiedFedEvents,addRecurringCompanions,nameEvent,alignTradingCalendarNames,formatRecordedValue};
