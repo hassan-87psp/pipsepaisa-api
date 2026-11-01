@@ -13,6 +13,8 @@ on:
       - 'scripts/live-calendar-frontend-smoke.cjs'
       - 'tests/calendar-week-sync.test.cjs'
       - 'tests/calendar-html-nextweek.test.cjs'
+      - 'tests/calendar-licensed-backup.test.cjs'
+      - 'tests/calendar-backup-integration.test.cjs'
       - 'tests/calendar-integrity.test.cjs'
       - '.github/workflows/economic-calendar-weekly-sync.yml'
 
