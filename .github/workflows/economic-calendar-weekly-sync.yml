@@ -9,7 +9,6 @@ on:
     paths:
       - 'api/calendar.js'
       - 'scripts/calendar-week-parity.cjs'
-      - 'scripts/ff-html-diagnostic.cjs'
       - 'tests/calendar-week-sync.test.cjs'
       - 'tests/calendar-integrity.test.cjs'
       - '.github/workflows/economic-calendar-weekly-sync.yml'
@@ -31,8 +30,6 @@ jobs:
           node-version: '22'
       - name: Calendar source and DST unit tests
         run: npm test
-      - name: Inspect next-week Forex Factory HTML fallback source
-        run: node scripts/ff-html-diagnostic.cjs
       - name: Compare deployed calendar with both Forex Factory weekly exports
         run: node scripts/calendar-week-parity.cjs
       - name: Raise or update a single actionable issue if production parity fails
