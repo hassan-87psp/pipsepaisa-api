@@ -12,6 +12,7 @@ on:
       - 'scripts/calendar-nextweek-snapshot.cjs'
       - 'scripts/live-calendar-frontend-smoke.cjs'
       - 'tests/calendar-week-sync.test.cjs'
+      - 'tests/calendar-html-nextweek.test.cjs'
       - 'tests/calendar-integrity.test.cjs'
       - '.github/workflows/economic-calendar-weekly-sync.yml'
 
