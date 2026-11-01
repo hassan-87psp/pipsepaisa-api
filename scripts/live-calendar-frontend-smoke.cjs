@@ -13,7 +13,7 @@
     today:html.includes("setNewsTime('today', this)"),
     nextWeek:html.includes("setNewsTime('nextweek', this)"),
     upcoming:html.includes("setNewsTime('upcoming', this)"),
-    version:html.includes('v537-nextweek-source-status'),
+    version:html.includes('v538-licensed-backup'),
     noFakeLive:html.includes('Checking source…'),
     calendarPanel:html.includes('id="page-news"'),
     mobileFilterScroll:html.includes('id="psp-economic-date-scroll-v534"')&&html.includes('overflow-x:auto !important')
@@ -26,11 +26,11 @@
   }catch(e){report.issues.push(path+': '+String(e.message||e));}
  }
  try{
-  const r=await fetch(origin+'/user-app-core-v29.js?v=20261101-v537-nextweek-source-status',
+  const r=await fetch(origin+'/user-app-core-v29.js?v=20261101-v538-licensed-backup',
    {signal:AbortSignal.timeout(14000),headers:{Accept:'application/javascript'}});
   const js=await r.text();
   report.asset={http:r.status,bytes:js.length,filter:js.includes('pspCalendarMatchesImpact'),
-   nextWeek:js.includes("newsState.time === 'nextweek'"),source:js.includes('X-Calendar-FF-NextWeek-Status')};
+   nextWeek:js.includes("newsState.time === 'nextweek'"),source:js.includes('X-Calendar-FF-NextWeek-Status')&&js.includes('X-Calendar-TE-Status')};
   if(!r.ok||Object.values(report.asset).some((v,k)=>k!=='http'&&k!=='bytes'&&v===false))
    report.issues.push('Deployed calendar script is stale or missing');
  }catch(e){report.issues.push('Core script: '+String(e.message||e));}
