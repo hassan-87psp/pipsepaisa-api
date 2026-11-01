@@ -9,6 +9,7 @@ on:
     paths:
       - 'api/calendar.js'
       - 'scripts/calendar-week-parity.cjs'
+      - 'scripts/ff-html-diagnostic.cjs'
       - 'tests/calendar-week-sync.test.cjs'
       - 'tests/calendar-integrity.test.cjs'
       - '.github/workflows/economic-calendar-weekly-sync.yml'
