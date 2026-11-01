@@ -6,6 +6,7 @@
  const report={at:new Date().toISOString(),routes:[],issues:[]};
  for(const path of routes){
   try{
+   const started=Date.now();
    const r=await fetch(origin+path,{signal:AbortSignal.timeout(14000),headers:{Accept:'text/html'}});
    const html=await r.text();
    const checks={
@@ -14,9 +15,12 @@
     upcoming:html.includes("setNewsTime('upcoming', this)"),
     version:html.includes('v537-nextweek-source-status'),
     noFakeLive:html.includes('Checking source…'),
-    calendarPanel:html.includes('id="page-news"')
+    calendarPanel:html.includes('id="page-news"'),
+    mobileFilterScroll:html.includes('id="psp-economic-date-scroll-v534"')&&html.includes('overflow-x:auto !important')
    };
-   report.routes.push({path,http:r.status,bytes:html.length,checks});
+   const responseMs=Date.now()-started;
+   report.routes.push({path,http:r.status,bytes:html.length,responseMs,checks});
+   if(responseMs>5000)report.issues.push('Slow calendar page response '+path+': '+responseMs+'ms');
    if(!r.ok||Object.values(checks).some(x=>!x))
     report.issues.push('Calendar markup mismatch '+path);
   }catch(e){report.issues.push(path+': '+String(e.message||e));}
