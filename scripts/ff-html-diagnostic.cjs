@@ -8,7 +8,7 @@
    const r=await fetch(url,{signal:AbortSignal.timeout(12000),headers:{
     Accept:'text/html','User-Agent':'Mozilla/5.0 (compatible; PipSePaisaCalendar/1.0)'}});
    const html=await r.text();
-   const sampleRows=(html.match(/<tr\\b[^>]*\\bcalendar__row\\b[^>]*>[\\s\\S]*?<\\/tr>/gi)||[]).filter(row=>row.includes('calendar__event-title')).slice(0,3);
+   const sampleRows=(html.match(/<tr\b[^>]*\bcalendar__row\b[^>]*>[\s\S]*?<\/tr>/gi)||[]).filter(row=>row.includes('calendar__event-title')).slice(0,3);
    const row=sampleRows.join('\\n---EVENT---\\n');
    const head=html.match(/Calendar Time Zone[^<]{0,180}/i)?.[0]||'';
    const impact=html.match(/<td\b[^>]*\bcalendar__impact\b[^>]*>[\s\S]{0,450}/i)?.[0]||'';
