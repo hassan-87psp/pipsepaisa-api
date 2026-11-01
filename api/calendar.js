@@ -523,6 +523,83 @@ async function getFFWeekly(nearRelease=false){
  const [current,next]=await Promise.all([getFFWeek('thisweek',nearRelease),getFFWeek('nextweek')]);
  return sortUnique([...current,...next]);
 }
+// Optional licensed calendar backup. Never represent its values as Forex Factory
+// values; use the named provider and keep official FF exact naming authoritative.
+const TE_COUNTRIES={
+ 'united states':'USD','united kingdom':'GBP','euro area':'EUR','germany':'EUR',
+ 'france':'EUR','italy':'EUR','japan':'JPY','canada':'CAD','australia':'AUD',
+ 'china':'CNY','switzerland':'CHF','new zealand':'NZD',
+ 'norway':'NOK','sweden':'SEK','india':'INR','hong kong':'HKD'
+};
+const TE_SOURCE='https://tradingeconomics.com/calendar';
+let teWeekCache={at:0,weekStart:'',verifiedAt:0,status:'not-configured',rows:[],error:''};
+let teWeekPending=null;
+function normalizeTE(row,now=Date.now()){
+ if(!row||typeof row!=='object'||String(row.DateSpan||'0')!=='0')return null;
+ const country=TE_COUNTRIES[String(row.Country||'').trim().toLowerCase()];
+ const title=nonempty(row.Event,160);
+ if(!country||!title)return null;
+ const rawDate=String(row.Date||'').trim();
+ // The published TE calendar Date is UTC, but frequently lacks the 'Z'.
+ if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(rawDate))return null;
+ const ms=Date.parse(/[zZ]|[+-]\d\d:\d\d$/.test(rawDate)?rawDate:rawDate+'Z');
+ if(!Number.isFinite(ms))return null;
+ const level=Number(row.Importance);
+ const actual=ms<=now?nonempty(row.Actual,60):'';
+ return {date:new Date(ms).toISOString(),country,title,impact:level===3?'High':level===2?'Medium':'Low',
+  actual,forecast:nonempty(row.Forecast,60),previous:nonempty(row.Previous,60),
+  source:'Trading Economics',sourceUrl:TE_SOURCE,forecastSource:TE_SOURCE,previousSource:TE_SOURCE,
+  actualSource:actual?TE_SOURCE:null,status:actual?'released':'confirmed',
+  eventId:'te-'+nonempty(row.CalendarId,40),verifiedProvider:'tradingeconomics'};
+}
+async function getTENextWeek(now=Date.now()){
+ const apiKey=String(process.env.TRADING_ECONOMICS_API_KEY||'').trim();
+ const week=ffWeekStart(now,1),ttl=60*60*1000;
+ if(!apiKey){teWeekCache.status='not-configured';return [];}
+ if(teWeekCache.weekStart===week&&teWeekCache.at&&now-teWeekCache.at<ttl)
+  return teWeekCache.rows;
+ if(teWeekPending)return teWeekPending;
+ teWeekPending=(async()=>{
+  try{
+   const end=new Date(Date.parse(week+'T12:00:00Z')+6*DAY).toISOString().slice(0,10);
+   const countryList=Object.keys(TE_COUNTRIES).join(',');
+   const endpoint='https://api.tradingeconomics.com/calendar/country/'+
+    encodeURIComponent(countryList)+'/'+week+'/'+end+'?c='+encodeURIComponent(apiKey)+'&f=json';
+   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);
+   let response;
+   try{response=await fetch(endpoint,{signal:controller.signal,headers:{Accept:'application/json'}});}
+   finally{clearTimeout(timer);}
+   if(!response.ok)throw Error('Trading Economics HTTP '+response.status);
+   const payload=await response.json();
+   if(!Array.isArray(payload))throw Error('Invalid Trading Economics response');
+   const rows=sortUnique(payload.slice(0,1500).map(row=>normalizeTE(row,now))
+    .filter(row=>row&&ffRowInWeek(row,'nextweek',now)));
+   if(!rows.length)throw Error('Empty or not yet published Trading Economics next week');
+   teWeekCache={weekStart:week,at:Date.now(),verifiedAt:Date.now(),rows,status:'available',error:''};
+  }catch(err){
+   teWeekCache={...teWeekCache,weekStart:week,at:Date.now(),status:'unavailable',
+    error:nonempty(err.message,100)};
+  }
+  return teWeekCache.rows.filter(row=>ffRowInWeek(row,'nextweek',now));
+ })().finally(()=>{teWeekPending=null});
+ return teWeekPending;
+}
+function applySecondaryCalendar(events,secondary){
+ // Exact-date, same-currency, same-metric matching only. Never overwrite a
+ // published Forex Factory figure with an unrelated provider's forecast.
+ const result=events.map(e=>({...e}));
+ for(const row of secondary){
+  const match=result.find(e=>sameFF(e,row));
+  if(!match){result.push(row);continue;}
+  if(match.source==='Forex Factory'||match.ffMatched)continue;
+  for(const key of ['forecast','previous']){
+   if(row[key]){match[key]=row[key];match[key+'Source']=TE_SOURCE;}
+  }
+  if(row.actual&&!match.actual){match.actual=row.actual;match.actualSource=TE_SOURCE;match.status='released';}
+  match.backupProvider='Trading Economics';
+ }
+ return sortUnique(result);
+}
 function sameFF(a,b){
  if(a.country!==b.country||Math.abs(Date.parse(a.date)-Date.parse(b.date))>4*60000)return false;
  const norm=x=>String(x||'').toLowerCase().replace(/[^a-z0-9]/g,'');
@@ -647,13 +724,14 @@ function stripPrematureActuals(events,now=Date.now()){
 module.exports=async function handler(req,res){
  res.setHeader('Access-Control-Allow-Origin','*');
  res.setHeader('Access-Control-Allow-Methods','GET, OPTIONS');
- res.setHeader('Access-Control-Expose-Headers','X-Calendar-Feed-Checked-At, X-Calendar-Source, X-Calendar-FF-ThisWeek-Status, X-Calendar-FF-NextWeek-Status, X-Calendar-FF-NextWeek-Provider');
+ res.setHeader('Access-Control-Expose-Headers','X-Calendar-Feed-Checked-At, X-Calendar-Source, X-Calendar-FF-ThisWeek-Status, X-Calendar-FF-NextWeek-Status, X-Calendar-FF-NextWeek-Provider, X-Calendar-NextWeek-Backup, X-Calendar-TE-Status');
  if(req.method==='OPTIONS')return res.status(200).end();
  if(req.method!=='GET')return res.status(405).json({error:'Method not allowed'});
  const now=Date.now();
  const cache=await getSchedule();
  const nearHighImpact=cache.rows.some(e=>e.impact==='High'&&Math.abs(Date.parse(e.date)-now)<90*60000);
  const ffRows=await getFFWeekly(nearHighImpact);
+ const teRows=ffWeekCache.nextweek.status==='available'?[]:await getTENextWeek(now);
  const releaseWindow=nearHighImpact||ffRows.some(e=>e.impact==='High'&&Math.abs(Date.parse(e.date)-now)<90*60000);
  res.setHeader('Cache-Control',releaseWindow
     ?'public, s-maxage=10, stale-while-revalidate=10'
@@ -663,14 +741,17 @@ module.exports=async function handler(req,res){
  res.setHeader('X-Calendar-FF-ThisWeek-Status',ffWeekCache.thisweek.status);
  res.setHeader('X-Calendar-FF-NextWeek-Status',ffWeekCache.nextweek.status);
  res.setHeader('X-Calendar-FF-NextWeek-Provider',ffWeekCache.nextweek.provider||'none');
+ res.setHeader('X-Calendar-NextWeek-Backup',teWeekCache.status==='available'?'tradingeconomics':
+  (teWeekCache.status==='not-configured'?'financecalendar':'financecalendar'));
+ res.setHeader('X-Calendar-TE-Status',teWeekCache.status);
  res.setHeader('X-Calendar-Source',ffRows.length?'Finance-Calendar-ForexFactory-and-Official-BLS':'Finance-Calendar-and-Official-BLS');
  if(!cache.rows.length&&!ffRows.length)
    return res.status(503).json({error:'Verified calendar sources temporarily unavailable',events:[],source:'Finance Calendar / Forex Factory'});
- const events=applyFFWeekly(addVerifiedFedEvents(cache.rows.filter(e=>Date.parse(e.date)>=now-30*DAY&&Date.parse(e.date)<=now+21*DAY).map(e=>({...e}))).map(alignTradingCalendarNames),ffRows);
+ const events=applySecondaryCalendar(applyFFWeekly(addVerifiedFedEvents(cache.rows.filter(e=>Date.parse(e.date)>=now-30*DAY&&Date.parse(e.date)<=now+21*DAY).map(e=>({...e}))).map(alignTradingCalendarNames),ffRows),teRows);
  await officialOverlay(events,now);
  const verified=stripPrematureActuals(removeEmptyCpiPackages(applyPrimaryReleasedActuals(events,now)),now);
  // Existing site expects an array; never pass future Actual or unvalued duplicate packages.
  return res.status(200).json(verified);
 };
 // Export only pure helpers for local deterministic testing; no network requests during import.
-module.exports._test={ffWeekStart,ffRowInWeek,parseFFWeekHTML,ffLocalToUTC,ffDatedWeekURL,normalize,normalizeFF,applyFFWeekly,applyPrimaryReleasedActuals,removeEmptyCpiPackages,stripPrematureActuals,sameFF,redundantGenericRate,releaseInstant,reportKind,reportDate,officialActual,sortUnique,addVerifiedFedEvents,addRecurringCompanions,nameEvent,alignTradingCalendarNames,formatRecordedValue};
+module.exports._test={normalizeTE,applySecondaryCalendar,ffWeekStart,ffRowInWeek,parseFFWeekHTML,ffLocalToUTC,ffDatedWeekURL,normalize,normalizeFF,applyFFWeekly,applyPrimaryReleasedActuals,removeEmptyCpiPackages,stripPrematureActuals,sameFF,redundantGenericRate,releaseInstant,reportKind,reportDate,officialActual,sortUnique,addVerifiedFedEvents,addRecurringCompanions,nameEvent,alignTradingCalendarNames,formatRecordedValue};
