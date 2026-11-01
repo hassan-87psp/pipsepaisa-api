@@ -32,12 +32,30 @@ async function audit(){
     status:'unavailable',sourceRows:0,matched:0,cases:[]};
   report.weeks[week]=output;
   try{
-   const r=await fetch(url,{signal:AbortSignal.timeout(16000),headers:{Accept:'application/json'}});
-   if(!r.ok){output.httpStatus=r.status;throw Error('FF HTTP '+r.status);}
-   const raw=await r.json();
-   if(!Array.isArray(raw))throw Error('FF export is not JSON array');
-   const normalized=raw.map(x=>calendar.normalizeFF(x,now)).filter(Boolean)
-     .filter(x=>calendar.ffRowInWeek(x,week,now));
+   let normalized=null;
+   if(week==='nextweek'){
+    // Dated page is public before the JSON nextweek export is published.
+    // Verify exact time/title/forecast/previous without inferring tentative events.
+    const pageURL=calendar.ffDatedWeekURL(now,1);
+    try{
+     const htmlResponse=await fetch(pageURL,{signal:AbortSignal.timeout(18000),
+      headers:{Accept:'text/html','User-Agent':'Mozilla/5.0 (compatible; PipSePaisaCalendar/1.0)'}});
+     if(htmlResponse.ok){
+      const html=await htmlResponse.text();
+      const parsed=calendar.parseFFWeekHTML(html,now,'nextweek');
+      if(parsed.length>=5){normalized=parsed;output.source=pageURL;output.provider='dated-html';}
+     }
+    }catch(_){/* Keep JSON as secondary source; no invented data. */}
+   }
+   if(!normalized){
+    const r=await fetch(url,{signal:AbortSignal.timeout(16000),headers:{Accept:'application/json'}});
+    if(!r.ok){output.httpStatus=r.status;throw Error('FF HTTP '+r.status);}
+    const raw=await r.json();
+    if(!Array.isArray(raw))throw Error('FF export is not JSON array');
+    normalized=raw.map(x=>calendar.normalizeFF(x,now)).filter(Boolean)
+      .filter(x=>calendar.ffRowInWeek(x,week,now));
+    output.provider='weekly-json';
+   }
    if(!normalized.length)throw Error('FF export is empty or belongs to another week');
    const seen=new Set(),sourceRows=normalized.filter(x=>{
     const key=x.country+'|'+x.title.toLowerCase()+'|'+x.date;
