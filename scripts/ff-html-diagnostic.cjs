@@ -13,6 +13,10 @@
    const head=html.match(/Calendar Time Zone[^<]{0,180}/i)?.[0]||'';
    const impact=html.match(/<td\b[^>]*\bcalendar__impact\b[^>]*>[\s\S]{0,450}/i)?.[0]||'';
    const time=html.match(/<td\b[^>]*\bcalendar__time\b[^>]*>[\s\S]{0,450}/i)?.[0]||'';
+   const calendar=require('../api/calendar.js')._test;
+   const parsed=calendar.parseFFWeekHTML(html,Date.now(),'nextweek');
+   console.log('FF_PARSER_DIAG '+JSON.stringify({url,count:parsed.length,first:parsed.slice(0,3),
+    weekStart:calendar.ffWeekStart(Date.now(),1),generatedURL:calendar.ffDatedWeekURL(Date.now(),1)}));
    console.log('FF_HTML_DIAG '+JSON.stringify({url,status:r.status,bytes:html.length,
     title:html.match(/<title[^>]*>([\s\S]{0,200})<\/title>/i)?.[1]||'',
     rowCount:(html.match(/<tr\b[^>]*\bcalendar__row\b/gi)||[]).length,
