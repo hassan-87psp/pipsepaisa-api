@@ -463,6 +463,21 @@ async function getFFDatedWeek(now=Date.now()){
  if(rows.length<5)throw Error('FF dated calendar has too few verifiable rows');
  return rows;
 }
+async function getFFNextWeekSnapshot(now=Date.now()){
+ const url='https://raw.githubusercontent.com/hassan-87psp/pipsepaisa-api/main/data/ff-nextweek-snapshot.json';
+ const response=await timedFetch(url,5500);
+ if(!response.ok)throw Error('FF nextweek saved snapshot HTTP '+response.status);
+ const snapshot=await response.json();
+ if(!snapshot||snapshot.weekStartET!==ffWeekStart(now,1)||
+  !Number.isFinite(Date.parse(snapshot.verifiedAt))||
+  now-Date.parse(snapshot.verifiedAt)>5*DAY||
+  !Array.isArray(snapshot.events)||snapshot.events.length<5)throw Error('Outdated/invalid FF snapshot');
+ // Re-normalize untrusted external JSON. Actuals are still release-time gated.
+ const rows=snapshot.events.slice(0,350).map(e=>normalizeFF(e,now)).filter(Boolean)
+  .filter(e=>ffRowInWeek(e,'nextweek',now));
+ if(rows.length<5)throw Error('FF snapshot does not match target week');
+ return rows;
+}
 async function getFFWeek(kind,nearRelease=false){
  const cache=ffWeekCache[kind];
  if(!cache)throw Error('Unknown Forex Factory week');
@@ -478,10 +493,13 @@ async function getFFWeek(kind,nearRelease=false){
   try{
    let rows,provider='json';
    if(kind==='nextweek'){
-    // Dated Forex Factory page is available before the nextweek JSON export.
-    // Prefer its exact names/figures, falling back to JSON if page is blocked.
+    // Prefer live dated HTML. If blocked, use a recent automatic snapshot from
+    // the exact same Forex Factory next-week source; never reuse a prior week.
     try{rows=await getFFDatedWeek();provider='dated-html';}
-    catch(_){rows=null;}
+    catch(_){
+     try{rows=await getFFNextWeekSnapshot();provider='verified-snapshot';}
+     catch(_){rows=null;}
+    }
    }
    if(!rows){
     const response=await fetch(FF_EXPORTS[kind],{signal:controller.signal,headers:{Accept:'application/json'}});
