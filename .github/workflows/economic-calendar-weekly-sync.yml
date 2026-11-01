@@ -36,6 +36,7 @@ jobs:
       - name: Compare deployed calendar with both Forex Factory weekly exports
         run: node scripts/calendar-week-parity.cjs
       - name: Read-only production frontend calendar smoke
+        if: always()
         run: node scripts/live-calendar-frontend-smoke.cjs
       - name: Refresh verified next-week Forex Factory snapshot
         if: always()
@@ -48,7 +49,7 @@ jobs:
               git push origin HEAD:main
             fi
           fi
-      - name: Raise or update a single actionable issue if production parity fails
+      - name: Keep next-week source blocker in issue #2 (at most one comment daily)
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -56,11 +57,20 @@ jobs:
           RUN_LINK: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         shell: bash
         run: |
-          title="Economic Calendar automatic parity failure"
-          existing="$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number' || true)"
-          body="Scheduled economic calendar validation failed. Review the Next Week / This Week published Forex Factory comparisons and live deployed API. Workflow: $RUN_LINK"
-          if [ -n "$existing" ]; then
-            gh issue comment "$existing" --body "$body"
+          if [ -f calendar-parity-last.json ] && node -e 'const r=require("./calendar-parity-last.json");process.exit(r.weeks.nextweek?.status!=="published"?0:1)'; then
+            gh issue reopen 2 2>/dev/null || true
+            day="$(date -u +%F)"
+            last="$(gh issue view 2 --json comments --jq '[.comments[].body] | last // ""' || true)"
+            if [[ "$last" != *"Auto-check $day:"* ]]; then
+              gh issue comment 2 --body "Auto-check $day: Next-week exact Forex Factory data remains unverified (dated HTML blocked or weekly JSON unavailable). Current source fallback is still clearly labelled. Check: $RUN_LINK"
+            fi
           else
-            gh issue create --title "$title" --body "$body"
+            title="Economic Calendar automatic parity failure"
+            existing="$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number' || true)"
+            body="An automatic economic calendar check failed. See workflow: $RUN_LINK"
+            if [ -n "$existing" ]; then
+              gh issue comment "$existing" --body "$body"
+            else
+              gh issue create --title "$title" --body "$body"
+            fi
           fi
