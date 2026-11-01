@@ -741,11 +741,13 @@ module.exports=async function handler(req,res){
  res.setHeader('X-Calendar-FF-ThisWeek-Status',ffWeekCache.thisweek.status);
  res.setHeader('X-Calendar-FF-NextWeek-Status',ffWeekCache.nextweek.status);
  res.setHeader('X-Calendar-FF-NextWeek-Provider',ffWeekCache.nextweek.provider||'none');
- res.setHeader('X-Calendar-NextWeek-Backup',teWeekCache.status==='available'?'tradingeconomics':
-  (teWeekCache.status==='not-configured'?'financecalendar':'financecalendar'));
- res.setHeader('X-Calendar-TE-Status',teWeekCache.status);
- res.setHeader('X-Calendar-Source',ffRows.length?'Finance-Calendar-ForexFactory-and-Official-BLS':'Finance-Calendar-and-Official-BLS');
- if(!cache.rows.length&&!ffRows.length)
+ res.setHeader('X-Calendar-NextWeek-Backup',ffWeekCache.nextweek.status==='available'?'not-needed':
+  (teRows.length?'tradingeconomics':'financecalendar'));
+ res.setHeader('X-Calendar-TE-Status',ffWeekCache.nextweek.status==='available'?'not-needed':teWeekCache.status);
+ res.setHeader('X-Calendar-Source',[
+  'Finance-Calendar',ffRows.length?'ForexFactory':null,teRows.length?'TradingEconomics':null,'Official-BLS'
+ ].filter(Boolean).join('-and-'));
+ if(!cache.rows.length&&!ffRows.length&&!teRows.length)
    return res.status(503).json({error:'Verified calendar sources temporarily unavailable',events:[],source:'Finance Calendar / Forex Factory'});
  const events=applySecondaryCalendar(applyFFWeekly(addVerifiedFedEvents(cache.rows.filter(e=>Date.parse(e.date)>=now-30*DAY&&Date.parse(e.date)<=now+21*DAY).map(e=>({...e}))).map(alignTradingCalendarNames),ffRows),teRows);
  await officialOverlay(events,now);
