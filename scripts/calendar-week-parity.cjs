@@ -19,6 +19,8 @@ async function audit(){
  if(!Array.isArray(data)||!data.length)throw Error('Production calendar returned no events');
  report.calendarCount=data.length;
  report.deployment={
+  nextWeekBackup:production.headers.get('x-calendar-nextweek-backup'),
+  tradingEconomics:production.headers.get('x-calendar-te-status'),
   thisweek:production.headers.get('x-calendar-ff-thisweek-status'),
   nextweek:production.headers.get('x-calendar-ff-nextweek-status'),
   feedCheckedAt:production.headers.get('x-calendar-feed-checked-at')
@@ -91,11 +93,17 @@ async function audit(){
  }
  if(report.summary.published===0)
   report.warnings.push('No Forex Factory weekly export verified: parity NOT confirmed');
+ // Missing future-week source is a parity failure, not a successful empty
+ // comparison. This deliberately triggers automated GitHub issue escalation.
+ if(report.weeks.nextweek?.status!=='published')
+  report.errors.push('Next-week Forex Factory source unavailable: exact event/name/forecast/previous parity NOT verified');
  if(data.some(e=>Date.parse(e.date)>now&&e.actual))
   report.errors.push('Future event has Actual before release');
  if(data.some(e=>!e||!e.title||!e.country||!Number.isFinite(Date.parse(e.date))))
   report.errors.push('Malformed calendar row');
  for(const value of Object.values(report.weeks))value.cases=value.cases.slice(0,35);
+ try{require('node:fs').writeFileSync('calendar-parity-last.json',JSON.stringify(report,null,2));}
+ catch(e){report.warnings.push('Could not persist parity report: '+String(e.message||e));}
  console.log('PIPSEPAISA_CALENDAR_WEEK_PARITY '+JSON.stringify(report,null,2));
  if(process.env.GITHUB_STEP_SUMMARY){
   const fs=require('node:fs');
