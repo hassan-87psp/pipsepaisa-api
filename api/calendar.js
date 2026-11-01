@@ -449,7 +449,14 @@ function parseFFWeekHTML(html,now=Date.now(),kind='nextweek'){
 }
 async function getFFDatedWeek(now=Date.now()){
  const url=ffDatedWeekURL(now,1);
- const response=await timedFetch(url,8000);
+ // Forex Factory HTML responds differently to bot user agents. Use standard
+ // browser Accept headers, with an independent short timeout and no retries.
+ const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),9500);
+ let response;
+ try{response=await fetch(url,{signal:controller.signal,headers:{
+  Accept:'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
+  'User-Agent':'Mozilla/5.0 (compatible; PipSePaisaCalendar/1.0)'
+ }});}finally{clearTimeout(timeout);}
  if(!response.ok)throw Error('FF dated calendar HTTP '+response.status);
  const html=await response.text();
  const rows=parseFFWeekHTML(html,now,'nextweek');
