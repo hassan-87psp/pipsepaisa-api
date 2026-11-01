@@ -462,7 +462,8 @@ async function getFFWeek(kind,nearRelease=false){
  // Two weekly exports at most on cold start; do not retry 404 or 429 continuously.
  // The current-week file can refresh every 5m near releases, next-week remains hourly.
  const ttl=nearRelease && kind==='thisweek'?FF_RELEASE_CACHE_MS:FF_CACHE_MS;
- if(cache.at&&Date.now()-cache.at<ttl)
+ const requestedWeek=ffWeekStart(Date.now(),kind==='nextweek'?1:0);
+ if(cache.at&&cache.weekStart===requestedWeek&&Date.now()-cache.at<ttl)
   return cache.rows.filter(row=>ffRowInWeek(row,kind));
  if(ffWeekPending[kind])return ffWeekPending[kind];
  ffWeekPending[kind]=(async()=>{
@@ -486,7 +487,7 @@ async function getFFWeek(kind,nearRelease=false){
    if(!rows.length)throw Error('FF '+kind+' empty or stale week');
    ffWeekCache[kind]={at:Date.now(),verifiedAt:Date.now(),rows,status:'available',provider,weekStart:ffWeekStart(Date.now(),kind==='nextweek'?1:0)};
   }catch(e){
-   ffWeekCache[kind]={...ffWeekCache[kind],at:Date.now(),status:'unavailable'};
+   ffWeekCache[kind]={...ffWeekCache[kind],at:Date.now(),status:'unavailable',weekStart:requestedWeek};
   }finally{clearTimeout(timer);}
   return ffWeekCache[kind].rows.filter(row=>ffRowInWeek(row,kind));
  })().finally(()=>{ffWeekPending[kind]=null});
