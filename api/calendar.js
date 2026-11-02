@@ -451,7 +451,7 @@ async function getFFDatedWeek(now=Date.now()){
  const url=ffDatedWeekURL(now,1);
  // Forex Factory HTML responds differently to bot user agents. Use standard
  // browser Accept headers, with an independent short timeout and no retries.
- const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),9500);
+ const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),5200);
  let response;
  try{response=await fetch(url,{signal:controller.signal,headers:{
   Accept:'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
@@ -465,7 +465,7 @@ async function getFFDatedWeek(now=Date.now()){
 }
 async function getFFNextWeekSnapshot(now=Date.now()){
  const url='https://raw.githubusercontent.com/hassan-87psp/pipsepaisa-api/main/data/ff-nextweek-snapshot.json';
- const response=await timedFetch(url,5500);
+ const response=await timedFetch(url,4200);
  if(!response.ok)throw Error('FF nextweek saved snapshot HTTP '+response.status);
  const snapshot=await response.json();
  if(!snapshot||snapshot.weekStartET!==ffWeekStart(now,1)||
@@ -566,7 +566,7 @@ async function getTENextWeek(now=Date.now()){
    const countryList=Object.keys(TE_COUNTRIES).join(',');
    const endpoint='https://api.tradingeconomics.com/calendar/country/'+
     encodeURIComponent(countryList)+'/'+week+'/'+end+'?c='+encodeURIComponent(apiKey)+'&f=json';
-   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);
+   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
    let response;
    try{response=await fetch(endpoint,{signal:controller.signal,headers:{Accept:'application/json'}});}
    finally{clearTimeout(timer);}
