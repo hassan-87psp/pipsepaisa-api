@@ -481,8 +481,6 @@ async function getFFNextWeekSnapshot(now=Date.now()){
 async function getFFWeek(kind,nearRelease=false){
  const cache=ffWeekCache[kind];
  if(!cache)throw Error('Unknown Forex Factory week');
- // Two weekly exports at most on cold start; do not retry 404 or 429 continuously.
- // The current-week file can refresh every 5m near releases, next-week remains hourly.
  const ttl=nearRelease && kind==='thisweek'?FF_RELEASE_CACHE_MS:FF_CACHE_MS;
  const requestedWeek=ffWeekStart(Date.now(),kind==='nextweek'?1:0);
  if(cache.at&&cache.weekStart===requestedWeek&&Date.now()-cache.at<ttl)
@@ -491,28 +489,31 @@ async function getFFWeek(kind,nearRelease=false){
  ffWeekPending[kind]=(async()=>{
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),4800);
   try{
-   let rows,provider='json';
-   if(kind==='nextweek'){
-    // Prefer live dated HTML. If blocked, use a recent automatic snapshot from
-    // the exact same Forex Factory next-week source; never reuse a prior week.
-    try{rows=await getFFDatedWeek();provider='dated-html';}
-    catch(_){
-     try{rows=await getFFNextWeekSnapshot();provider='verified-snapshot';}
-     catch(_){rows=null;}
-    }
-   }
-   if(!rows){
+   const fromJSON=async()=>{
     const response=await fetch(FF_EXPORTS[kind],{signal:controller.signal,headers:{Accept:'application/json'}});
     if(!response.ok)throw Error('FF '+kind+' HTTP '+response.status);
     const raw=await response.json();
     if(!Array.isArray(raw))throw Error('FF '+kind+' invalid JSON');
-    const normalized=raw.slice(0,350).map(x=>normalizeFF(x)).filter(Boolean);
-    rows=normalized.filter(row=>ffRowInWeek(row,kind));
-   }
-   if(!rows.length)throw Error('FF '+kind+' empty or stale week');
-   ffWeekCache[kind]={at:Date.now(),verifiedAt:Date.now(),rows,status:'available',provider,weekStart:ffWeekStart(Date.now(),kind==='nextweek'?1:0)};
+    const rows=raw.slice(0,350).map(x=>normalizeFF(x)).filter(Boolean)
+     .filter(row=>ffRowInWeek(row,kind));
+    if(!rows.length)throw Error('FF '+kind+' empty or stale week');
+    return {rows,provider:'json'};
+   };
+   // Run independent official FF sources concurrently. Sequential 403/404
+   // attempts previously could exceed the 16s browser timeout on a cold API.
+   const selected=kind==='nextweek'
+    ?await Promise.any([
+      getFFDatedWeek().then(rows=>({rows,provider:'dated-html'})),
+      getFFNextWeekSnapshot().then(rows=>({rows,provider:'verified-snapshot'})),
+      fromJSON()
+     ])
+    :await fromJSON();
+   const {rows,provider}=selected;
+   ffWeekCache[kind]={at:Date.now(),verifiedAt:Date.now(),rows,status:'available',
+    provider,weekStart:ffWeekStart(Date.now(),kind==='nextweek'?1:0)};
   }catch(e){
-   ffWeekCache[kind]={...ffWeekCache[kind],at:Date.now(),status:'unavailable',weekStart:requestedWeek};
+   ffWeekCache[kind]={...ffWeekCache[kind],at:Date.now(),status:'unavailable',
+    provider:'none',weekStart:requestedWeek};
   }finally{clearTimeout(timer);}
   return ffWeekCache[kind].rows.filter(row=>ffRowInWeek(row,kind));
  })().finally(()=>{ffWeekPending[kind]=null});
@@ -728,9 +729,11 @@ module.exports=async function handler(req,res){
  if(req.method==='OPTIONS')return res.status(200).end();
  if(req.method!=='GET')return res.status(405).json({error:'Method not allowed'});
  const now=Date.now();
- const cache=await getSchedule();
+ // Start independent calendar providers together: the browser waits just 16s.
+ // On a cold instance the FF download is fresh regardless of near-release hint.
+ const nearHighImpactHint=scheduleCache.rows.some(e=>e.impact==='High'&&Math.abs(Date.parse(e.date)-now)<90*60000);
+ const [cache,ffRows]=await Promise.all([getSchedule(),getFFWeekly(nearHighImpactHint)]);
  const nearHighImpact=cache.rows.some(e=>e.impact==='High'&&Math.abs(Date.parse(e.date)-now)<90*60000);
- const ffRows=await getFFWeekly(nearHighImpact);
  const teRows=ffWeekCache.nextweek.status==='available'?[]:await getTENextWeek(now);
  const releaseWindow=nearHighImpact||ffRows.some(e=>e.impact==='High'&&Math.abs(Date.parse(e.date)-now)<90*60000);
  res.setHeader('Cache-Control',releaseWindow
