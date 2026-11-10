@@ -13,7 +13,7 @@
     today:html.includes("setNewsTime('today', this)"),
     nextWeek:html.includes("setNewsTime('nextweek', this)"),
     upcoming:html.includes("setNewsTime('upcoming', this)"),
-    version:/<script\b[^>]*\bsrc=["'][^"']*user-app-core-v29\.js\?v=2026\d{4}-v\d+[^"']*["']/i.test(html),
+    version:/<script\b[^>]*\bsrc=["'][^"']*user-app-core-v29\.js\?v=\d{8}-v\d+[^"']*["']/i.test(html),
     noFakeLive:html.includes('Checking source…'),
     calendarPanel:html.includes('id="page-news"'),
     mobileFilterScroll:html.includes('id="psp-economic-date-scroll-v534"')&&html.includes('overflow-x:auto !important')
