@@ -53,7 +53,7 @@ export default async function handler(req,res){
   if(!session)return reply(res,403,{error:'Content Studio creator permission required'});
   const body=typeof req.body==='string'?JSON.parse(req.body):req.body||{};
   const file=String(body.path||'');
-  if(file.length>230||!new RegExp('^[0-9a-f-]{36}/(?:audio|video)-[0-9A-Za-z._-]{10,190}\.(?:webm|mp4|mp3)$').test(file))
+  if(file.length>230||!/^[0-9a-f-]{36}\/(?:audio|video)-[0-9A-Za-z._-]{10,190}\.(?:webm|mp4|mp3)$/.test(file))
    return reply(res,400,{error:'Invalid private recording path'});
   if(!file.startsWith(session.id+'/'))return reply(res,403,{error:'Recording belongs to a different account'});
   const language=['en','ur'].includes(body.language)?body.language:null;
