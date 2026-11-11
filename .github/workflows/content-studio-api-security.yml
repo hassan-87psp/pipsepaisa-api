@@ -1,0 +1,29 @@
+name: Content Studio API Security Tests
+on:
+  push:
+    paths:
+      - 'api/studio-transcribe.js'
+      - 'tests/studio-transcribe.test.cjs'
+      - '.github/workflows/content-studio-api-security.yml'
+  pull_request:
+    paths:
+      - 'api/studio-transcribe.js'
+      - 'tests/studio-transcribe.test.cjs'
+      - '.github/workflows/content-studio-api-security.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  content-studio-tests:
+    name: Content Studio authentication and transcription mocks
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Checkout PipSePaisa API
+        uses: actions/checkout@v4
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test private recording transcription
+        run: node --test tests/studio-transcribe.test.cjs
