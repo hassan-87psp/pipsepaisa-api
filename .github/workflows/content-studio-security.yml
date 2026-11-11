@@ -1,0 +1,20 @@
+name: Content Studio API Security Smoke
+on:
+  push:
+    paths:
+      - "api/studio-transcribe.js"
+      - "tests/studio-transcribe.test.cjs"
+      - ".github/workflows/content-studio-security.yml"
+  workflow_dispatch:
+jobs:
+  transcription-auth:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run private transcription authentication tests
+        run: node --test tests/studio-transcribe.test.cjs
