@@ -46,11 +46,11 @@ export default async function handler(req,res){
  if(length>4096)return reply(res,413,{error:'Request too large'});
  const header=String(req.headers.authorization||'');
  if(!/^Bearer\s+\S+$/i.test(header))return reply(res,401,{error:'Sign in required'});
- const groq=process.env.GROQ_API_KEY;
- if(!groq)return reply(res,503,{error:'AI transcription is not configured on the server'});
  try{
   const session=await authorized(header);
   if(!session)return reply(res,403,{error:'Content Studio creator permission required'});
+  const groq=process.env.GROQ_API_KEY;
+  if(!groq)return reply(res,503,{error:'AI transcription is not configured on the server'});
   const body=typeof req.body==='string'?JSON.parse(req.body):req.body||{};
   const file=String(body.path||'');
   if(file.length>230||!/^[0-9a-f-]{36}\/(?:audio|video)-[0-9A-Za-z._-]{10,190}\.(?:webm|mp4|mp3)$/.test(file))
