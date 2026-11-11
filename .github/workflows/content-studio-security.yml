@@ -18,3 +18,19 @@ jobs:
           node-version: "22"
       - name: Run private transcription authentication tests
         run: node --test tests/studio-transcribe.test.cjs
+      - name: Verify the published Vercel route rejects anonymous access
+        shell: bash
+        run: |
+          set -euo pipefail
+          api='https://pipsepaisa-api.vercel.app/api/studio-transcribe'
+          for attempt in 1 2 3 4 5 6; do
+            preflight=$(curl -sS -o /dev/null --max-time 20 -w '%{http_code}' -X OPTIONS "$api"               -H 'Origin: https://www.pipsepaisa.com'               -H 'Access-Control-Request-Method: POST' || true)
+            anonymous=$(curl -sS -o /dev/null --max-time 20 -w '%{http_code}' -X POST "$api"               -H 'Origin: https://www.pipsepaisa.com'               -H 'Content-Type: application/json'               --data '{"path":"no-session.webm"}' || true)
+            echo "attempt=$attempt preflight=$preflight anonymous=$anonymous"
+            if [ "$preflight" = "204" ] && [ "$anonymous" = "401" ]; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo 'Published API route is missing or does not enforce authentication.'
+          exit 1
