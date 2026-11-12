@@ -56,3 +56,16 @@ test('deduplication keeps the newest original when near matches exist',()=>{
  assert.equal(unique.length,1);
  assert.equal(unique[0].title,rows[1].title);
 });
+
+test('source-specific attribution removes exact syndicated news repeated via Moomoo',()=>{
+ const a=story('Asian Currencies Falter as Dollar Thrives - marketscreener.com',0);
+ const b=story('Asian Currencies Falter as Dollar Thrives - Moomoo',1);
+ a.source='marketscreener.com';b.source='Moomoo';
+ assert.equal(dedupe([a,b]).length,1);
+});
+test('source-specific attribution merges MarketScreener regional reprints',()=>{
+ const a=story('African markets - factors to watch on November 12 - MarketScreener UK',0);
+ const b=story('African markets - factors to watch on November 12 - marketscreener.com',1);
+ a.source='MarketScreener UK';b.source='marketscreener.com';
+ assert.equal(dedupe([a,b]).length,1);
+});
