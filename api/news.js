@@ -306,7 +306,7 @@ function parseFeed(xml, feed, now) {
 // Cross-feed headline matching. Avoid collapsing related but genuinely different
 // updates: only very similar title language with the same leading subject is merged.
 const HEADLINE_NOISE = new Set('a an the and or for of in on at to by from with as is are was were has have had be this that its their into over amid after ahead before says said via analysis'.split(' '));
-const HEADLINE_DISTINCTIONS = new Set('range prediction forecast south north east west hike cut approval rejection rise fall higher lower up down record'.split(' '));
+const HEADLINE_DISTINCTIONS = new Set('range prediction forecast south north east west hike hikes cut cuts approval rejection approve rejects rise rises rising fall falls falling higher lower up down above below surge surges slips gain gains lose loses jumps drops climbs tumbles record'.split(' '));
 function headlineFingerprint(title) {
   const raw = String(title||'').toLowerCase()
     .replace(/^\s*(?:analysis|opinion)\s*[-:]\s*/,'')
