@@ -303,13 +303,42 @@ function parseFeed(xml, feed, now) {
   }
   return results;
 }
+// Cross-feed headline matching. Avoid collapsing related but genuinely different
+// updates: only very similar title language with the same leading subject is merged.
+const HEADLINE_NOISE = new Set('a an the and or for of in on at to by from with as is are was were has have had be this that its their into over amid after ahead before says said via analysis'.split(' '));
+const HEADLINE_DISTINCTIONS = new Set('range prediction forecast south north east west hike cut approval rejection rise fall higher lower up down record'.split(' '));
+function headlineFingerprint(title) {
+  const raw = String(title||'').toLowerCase()
+    .replace(/^\s*(?:analysis|opinion)\s*[-:]\s*/,'')
+    .replace(/\s+[-–—]\s+(?:[\w.-]+\.(?:com|co\.uk|net|org)(?:\s+\w+){0,3}|bloomberg|reuters|fxstreet|marketwatch|yahoo finance|the business times)\s*$/i,'')
+    .replace(/\s+(?:by|via)\s+(?:investing\.com|reuters|bloomberg|associated press)\s*$/i,'');
+  const key = raw.replace(/[^a-z0-9]+/g,' ').trim();
+  const terms = [...new Set(key.split(' ').filter(w=>w.length>2&&!HEADLINE_NOISE.has(w)))];
+  return {key,terms,lead:terms.slice(0,2).join('|'),termsSet:new Set(terms)};
+}
+function isNearDuplicateHeadline(a,b) {
+  if(a.key===b.key)return true;
+  if(a.lead!==b.lead || a.terms.length<6 || b.terms.length<6)return false;
+  for(const term of HEADLINE_DISTINCTIONS) {
+    if(a.termsSet.has(term)!==b.termsSet.has(term))return false;
+  }
+  let shared=0;
+  for(const term of a.termsSet)if(b.termsSet.has(term))shared++;
+  const union=a.terms.length+b.terms.length-shared;
+  return shared>=6 && shared/union>=0.76 &&
+    shared/Math.min(a.terms.length,b.terms.length)>=0.86;
+}
 function dedupe(items) {
-  const seen = new Set(), all = [];
+  const seen = new Set(), all = [], prefixIndex=new Map();
   for (const item of items.sort((a,b)=>Date.parse(b.date)-Date.parse(a.date))) {
-    const key=item.title.toLowerCase().replace(/\s+-\s+[^–-]{2,55}$/, '')
-      .replace(/[^a-z0-9]+/g,' ').trim();
-    if(!key||seen.has(key))continue;
-    seen.add(key);all.push(item);
+    const fingerprint=headlineFingerprint(item.title);
+    if(!fingerprint.key||seen.has(fingerprint.key))continue;
+    const candidates=prefixIndex.get(fingerprint.lead)||[];
+    if(candidates.some(prev=>isNearDuplicateHeadline(fingerprint,prev)))continue;
+    seen.add(fingerprint.key);
+    candidates.push(fingerprint);
+    prefixIndex.set(fingerprint.lead,candidates);
+    all.push(item);
   }
   if(all.length<=MAX_ITEMS)return all;
   // Reserve enough room so crowded generic news cannot displace fresh
@@ -395,4 +424,4 @@ module.exports = async function handler(req, res) {
 };
 
 // Pure RSS helpers for regression tests: no network traffic on import.
-module.exports._test={clean,decode,tag,parseFeed};
+module.exports._test={clean,decode,tag,parseFeed,dedupe,headlineFingerprint,isNearDuplicateHeadline};
