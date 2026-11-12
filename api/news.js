@@ -176,6 +176,57 @@ TARGETED_GOOGLE_FEEDS.push(
   { name:'Google News', category:"Forex", url:google("site:fxstreet.com/news Fed Powell USDJPY EURUSD") }
 );
 FEEDS.push(...TARGETED_GOOGLE_FEEDS, ...PUBLIC_RSS_FEEDS);
+// Curated Gold/Forex research and central-bank policy coverage.
+// Google News indexes the publisher's *public headlines* and links visitors to
+// originals; we neither reproduce paywalled bodies nor claim official approval.
+const GOLD_FOREX_PRIORITY_GOOGLE_FEEDS = [
+  // XAUUSD: physical/ETF flows, positioning, yields and currency-driven repricing.
+  { name:'Google News', category:'Gold', url:google('spot gold XAUUSD dollar Treasury yields real yields') },
+  { name:'Google News', category:'Gold', url:google('COMEX gold futures institutional positioning open interest') },
+  { name:'Google News', category:'Gold', url:google('gold ETF flows inflows outflows central bank purchases') },
+  { name:'Google News', category:'Gold', url:google('World Gold Council central bank gold demand ETF flows') },
+  { name:'Google News', category:'Gold', url:google('site:gold.org/goldhub gold market commentary ETF demand') },
+  { name:'Google News', category:'Gold', url:google('site:kitco.com/news gold silver spot price Fed dollar') },
+  { name:'Google News', category:'Gold', url:google('site:fxstreet.com/news gold XAUUSD Treasury yields') },
+  { name:'Google News', category:'Gold', url:google('site:reuters.com gold bullion precious metals dollar Fed') },
+  { name:'Google News', category:'Gold', url:google('LBMA gold precious metals London fix market') },
+  // Major pairs and central-bank policy shifts.
+  { name:'Google News', category:'Forex', url:google('EURUSD GBPUSD USDJPY currency pair market moves') },
+  { name:'Google News', category:'Forex', url:google('GBPJPY EURJPY cross currency exchange rate moves') },
+  { name:'Google News', category:'Forex', url:google('AUDUSD NZDUSD RBA RBNZ rates currency') },
+  { name:'Google News', category:'Forex', url:google('USDCAD USDCHF Bank of Canada SNB forex policy') },
+  { name:'Google News', category:'Forex', url:google('USDCNH yuan renminbi PBOC yuan fixing currency') },
+  { name:'Google News', category:'Forex', url:google('US dollar index DXY euro yen sterling forex reaction') },
+  { name:'Google News', category:'Forex', url:google('site:forexlive.com gold forex currencies yield market news') },
+  { name:'Google News', category:'Forex', url:google('site:fxstreet.com/news GBPJPY EURJPY AUDUSD USDCAD') },
+  // Disclosed research and weekly reports: CFTC RSS is presently disabled;
+  // these are dated news articles, NOT a substitute for verified COT figures.
+  { name:'Google News', category:'Gold', url:google('CFTC COT gold futures net long speculative positioning') },
+  { name:'Google News', category:'Forex', url:google('CFTC commitments of traders dollar euro yen futures positioning') },
+  // Important cross-asset catalysts for XAUUSD and FX.
+  { name:'Google News', category:'Macro', url:google('US CPI PPI PCE NFP payroll inflation dollar gold reaction') },
+  { name:'Google News', category:'Macro', url:google('US Treasury 10 year real yields TIPS dollar gold moves') },
+  { name:'Google News', category:'Central Banks', url:google('Fed FOMC statement minutes Powell rates gold dollar') },
+  { name:'Google News', category:'Central Banks', url:google('ECB BoE BOJ RBA RBNZ BOC SNB interest rate decision currency') },
+  { name:'Google News', category:'Geopolitics', url:google('safe haven gold geopolitical oil supply Hormuz sanctions') }
+];
+// Direct RSS sources listed by the institutions themselves; when blocked or
+// outside the freshness window they simply contribute zero items.
+const GOLD_FOREX_OFFICIAL_RSS_FEEDS = [
+  { name:'European Central Bank', category:'Central Banks', url:'https://www.ecb.europa.eu/rss/press.html' },
+  { name:'European Central Bank', category:'Macro', url:'https://www.ecb.europa.eu/rss/statpress.html' },
+  { name:'Bank of England', category:'Central Banks', url:'https://www.bankofengland.co.uk/rss/news' }
+];
+FEEDS.push(...GOLD_FOREX_PRIORITY_GOOGLE_FEEDS, ...GOLD_FOREX_OFFICIAL_RSS_FEEDS);
+
+
+// Some targeted topics overlap older feeds. Avoid duplicate outbound fetches.
+const FEED_URLS=new Set();
+const ACTIVE_FEEDS=FEEDS.filter(feed=>{
+  if(FEED_URLS.has(feed.url))return false;
+  FEED_URLS.add(feed.url);
+  return true;
+});
 
 const MAX_ITEMS = 500;
 const CACHE_MS = 2 * 60 * 1000;
@@ -390,7 +441,7 @@ async function readFeed(feed, now) {
 }
 async function refresh() {
   const now = Date.now();
-  const results = await Promise.all(FEEDS.map(f => readFeed(f, now)));
+  const results = await Promise.all(ACTIVE_FEEDS.map(f => readFeed(f, now)));
   const sourceHealth = results.map(r=>r.health);
   const sourcesOk = sourceHealth.filter(s=>s.ok).length;
   const allItems = results.flatMap(r=>r.items);
@@ -413,7 +464,7 @@ module.exports = async function handler(req, res) {
       await loading;
     }
     if (req.query?.health === '1') {
-      return res.status(200).json({ success:true, configured:FEEDS.length,
+      return res.status(200).json({ success:true, configured:ACTIVE_FEEDS.length,
         working:cache.feedHealth.filter(s=>s.ok).length,
         withItems:cache.feedHealth.filter(s=>s.count>0).length,
         totalParsed:cache.totalParsed, uniqueHeadlines:cache.items.length,
