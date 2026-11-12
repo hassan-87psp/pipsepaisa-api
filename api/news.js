@@ -232,7 +232,7 @@ const MAX_ITEMS = 500;
 const CACHE_MS = 2 * 60 * 1000;
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 5000;
-let cache = { at: 0, items: [], sourcesOk: 0, feedHealth: [], totalParsed: 0 };
+let cache = { at: 0, items: [], tradingItems: [], sourcesOk: 0, feedHealth: [], totalParsed: 0 };
 let loading = null;
 
 function decode(s) {
@@ -418,6 +418,20 @@ function selectPriorityHeadlines(all,max=MAX_ITEMS,now=Date.now()) {
   take(all,max);
   return [...selected].sort((a,b)=>Date.parse(b.date)-Date.parse(a.date));
 }
+// The public World News Hub keeps its established mixed-topic feed.
+// AI Studio opts into the specialist Gold/Forex digest via focus=trading.
+function selectGeneralHeadlines(all,max=MAX_ITEMS){
+  if(all.length<=max)return all;
+  const high=all.filter(x=>x.heat==='hot');
+  const medium=all.filter(x=>x.heat==='warm');
+  const selected=new Set(high.slice(0,Math.round(max*.44)));
+  for(const item of medium.slice(0,Math.max(0,Math.round(max*.70)-selected.size)))selected.add(item);
+  for(const item of all) {
+    if(selected.size>=max)break;
+    selected.add(item);
+  }
+  return [...selected].sort((a,b)=>Date.parse(b.date)-Date.parse(a.date));
+}
 function dedupe(items) {
   const seen = new Set(), all = [], prefixIndex=new Map();
   for (const item of items.sort((a,b)=>Date.parse(b.date)-Date.parse(a.date))) {
@@ -430,7 +444,7 @@ function dedupe(items) {
     prefixIndex.set(fingerprint.lead,candidates);
     all.push(item);
   }
-  return selectPriorityHeadlines(all);
+  return all;
 }
 async function readFeed(feed, now) {
   const start = Date.now();
@@ -461,10 +475,13 @@ async function refresh() {
   const sourceHealth = results.map(r=>r.health);
   const sourcesOk = sourceHealth.filter(s=>s.ok).length;
   const allItems = results.flatMap(r=>r.items);
-  const items = dedupe(allItems);
+  const unique=dedupe(allItems);
+  const items=selectGeneralHeadlines(unique);
+  const tradingItems=selectPriorityHeadlines(unique);
   // Even on upstream failure, back off instead of hammering every provider on every request.
-  cache = {at:Date.now(), items: items.length ? items : cache.items, sourcesOk,
-    feedHealth: sourceHealth, totalParsed: allItems.length};
+  cache = {at:Date.now(), items:items.length?items:cache.items,
+    tradingItems:tradingItems.length?tradingItems:cache.tradingItems,
+    sourcesOk, feedHealth:sourceHealth, totalParsed:allItems.length};
 }
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -489,7 +506,8 @@ module.exports = async function handler(req, res) {
     const category = typeof req.query?.category === 'string' ? req.query.category.trim().toLowerCase() : '';
     const limitRaw = Number(req.query?.limit);
     const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(Math.trunc(limitRaw), MAX_ITEMS) : MAX_ITEMS;
-    const filtered = category ? cache.items.filter(x => x.category.toLowerCase() === category) : cache.items;
+    const available=req.query?.focus==='trading' ? cache.tradingItems : cache.items;
+    const filtered = category ? available.filter(x => x.category.toLowerCase() === category) : available;
     res.setHeader('X-News-Sources-OK', String(cache.sourcesOk));
     res.setHeader('X-News-Cache', now - cache.at < CACHE_MS ? 'FRESH' : 'STALE');
     // Compact mode is opt-in for mobile Studio; the regular API contract stays unchanged.
@@ -509,4 +527,4 @@ module.exports = async function handler(req, res) {
 };
 
 // Pure RSS helpers for regression tests: no network traffic on import.
-module.exports._test={clean,decode,tag,parseFeed,dedupe,headlineFingerprint,isNearDuplicateHeadline,gradeHeadline,classify,selectPriorityHeadlines,activeFeeds:ACTIVE_FEEDS};
+module.exports._test={clean,decode,tag,parseFeed,dedupe,headlineFingerprint,isNearDuplicateHeadline,gradeHeadline,classify,selectPriorityHeadlines,selectGeneralHeadlines,activeFeeds:ACTIVE_FEEDS};
