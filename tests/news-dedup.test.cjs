@@ -52,9 +52,10 @@ test('deduplication keeps the newest original when near matches exist',()=>{
   story('From SpaceX to Anthropic, markets have a new playbook for mega-share debuts - marketscreener.com',1),
   story('Analysis-From SpaceX to Anthropic, markets have a new playbook for mega-share debuts',0)
  ];
+ const newestTitle=rows[1].title;
  const unique=dedupe(rows);
  assert.equal(unique.length,1);
- assert.equal(unique[0].title,rows[1].title);
+ assert.equal(unique[0].title,newestTitle);
 });
 
 test('source-specific attribution removes exact syndicated news repeated via Moomoo',()=>{
