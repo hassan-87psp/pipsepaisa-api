@@ -307,8 +307,20 @@ function parseFeed(xml, feed, now) {
 // updates: only very similar title language with the same leading subject is merged.
 const HEADLINE_NOISE = new Set('a an the and or for of in on at to by from with as is are was were has have had be this that its their into over amid after ahead before says said via analysis'.split(' '));
 const HEADLINE_DISTINCTIONS = new Set('range prediction forecast south north east west hike hikes cut cuts approval rejection approve rejects rise rises rising fall falls falling higher lower up down above below surge surges slips gain gains lose loses jumps drops climbs tumbles record'.split(' '));
-function headlineFingerprint(title) {
-  const raw = String(title||'').toLowerCase()
+function headlineFingerprint(title, source) {
+  let headline=String(title||'').toLowerCase().trim();
+  const publisher=String(source||'').toLowerCase().trim();
+  // Match the feed's actual publisher attribution, including regional editions,
+  // without stripping genuine subtitles from the article itself.
+  if(publisher) {
+    for(const separator of [' - ',' – ',' — ']) {
+      if(headline.endsWith(separator+publisher)) {
+        headline=headline.slice(0,-(separator.length+publisher.length)).trim();
+        break;
+      }
+    }
+  }
+  const raw = headline
     .replace(/^\s*(?:analysis|opinion)\s*[-:]\s*/,'')
     .replace(/\s+[-–—]\s+(?:[\w.-]+\.(?:com|co\.uk|net|org)(?:\s+\w+){0,3}|bloomberg|reuters|fxstreet|marketwatch|yahoo finance|the business times)\s*$/i,'')
     .replace(/\s+(?:by|via)\s+(?:investing\.com|reuters|bloomberg|associated press)\s*$/i,'');
@@ -331,7 +343,7 @@ function isNearDuplicateHeadline(a,b) {
 function dedupe(items) {
   const seen = new Set(), all = [], prefixIndex=new Map();
   for (const item of items.sort((a,b)=>Date.parse(b.date)-Date.parse(a.date))) {
-    const fingerprint=headlineFingerprint(item.title);
+    const fingerprint=headlineFingerprint(item.title,item.source);
     if(!fingerprint.key||seen.has(fingerprint.key))continue;
     const candidates=prefixIndex.get(fingerprint.lead)||[];
     if(candidates.some(prev=>isNearDuplicateHeadline(fingerprint,prev)))continue;
