@@ -410,7 +410,9 @@ function selectPriorityHeadlines(all,max=MAX_ITEMS,now=Date.now()) {
     }
   };
   const focused=fresh.filter(x=>x.marketFocus===true);
-  take(focused.filter(x=>x.category==='Gold'||x.category==='Forex'),Math.round(max*.40));
+  // Separate minimum allocations prevent a busy Gold cycle hiding Forex news.
+  take(focused.filter(x=>x.category==='Gold'),Math.round(max*.24));
+  take(focused.filter(x=>x.category==='Forex'),Math.round(max*.16));
   take(focused.filter(x=>x.category==='Macro'||x.category==='Central Banks'),Math.round(max*.26));
   take(focused.filter(x=>['Geopolitics','US News','Markets'].includes(x.category)),Math.round(max*.18));
   take(focused.filter(x=>x.category==='Crypto'),Math.round(max*.08));
