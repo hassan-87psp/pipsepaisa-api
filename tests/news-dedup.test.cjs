@@ -70,3 +70,12 @@ test('source-specific attribution merges MarketScreener regional reprints',()=>{
  a.source='MarketScreener UK';b.source='marketscreener.com';
  assert.equal(dedupe([a,b]).length,1);
 });
+
+test('two titles pointing to one live article URL appear only once',()=>{
+ const link='https://www.bloomberg.com/news/live-blog/2026-11-12/ftse-market-updates';
+ const first={...story('FTSE 100 Poised to Rise, Pound Falls',0),link};
+ const second={...story('UK Economy Grew More Than Expected in September',1),link};
+ const kept=dedupe([second,first]);
+ assert.equal(kept.length,1);
+ assert.equal(kept[0].title,first.title);
+});
