@@ -440,13 +440,15 @@ function selectGeneralHeadlines(all,max=MAX_ITEMS){
   return [...selected].sort((a,b)=>Date.parse(b.date)-Date.parse(a.date));
 }
 function dedupe(items) {
-  const seen = new Set(), all = [], prefixIndex=new Map();
+  const seen = new Set(), seenLinks=new Set(), all = [], prefixIndex=new Map();
   for (const item of items.sort((a,b)=>Date.parse(b.date)-Date.parse(a.date))) {
     const fingerprint=headlineFingerprint(item.title,item.source);
-    if(!fingerprint.key||seen.has(fingerprint.key))continue;
+    const articleUrl=String(item.link||item.url||'').split('#')[0];
+    if(!fingerprint.key||seen.has(fingerprint.key)||(articleUrl&&seenLinks.has(articleUrl)))continue;
     const candidates=prefixIndex.get(fingerprint.lead)||[];
     if(candidates.some(prev=>isNearDuplicateHeadline(fingerprint,prev)))continue;
     seen.add(fingerprint.key);
+    if(articleUrl)seenLinks.add(articleUrl);
     candidates.push(fingerprint);
     prefixIndex.set(fingerprint.lead,candidates);
     all.push(item);
