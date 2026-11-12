@@ -267,6 +267,8 @@ function classify(title, fallback) {
   const t = title.toLowerCase();
   if (/\b(bitcoin|btc|crypto|ethereum|eth|blockchain)\b/.test(t)) return 'Crypto';
   if (/\b(gold|xauusd|silver|bullion|precious metals)\b/.test(t)) return 'Gold';
+  // A named currency pair takes precedence over generic central-bank keywords.
+  if (/\b(?:eurusd|gbpusd|usdjpy|gbpjpy|eurjpy|audusd|nzdusd|usdcad|usdchf|eurgbp|usdcnh|cadjpy|eur\/usd|gbp\/usd|usd\/jpy|gbp\/jpy|aud\/usd|nzd\/usd|usd\/cad|usd\/chf)\b/.test(t)) return 'Forex';
   if (/\b(war|conflict|missile|sanctions|ceasefire|tariffs|geopolitic)\b/.test(t)) return 'Geopolitics';
   if (/\b(fed|fomc|ecb|boe|boj|rba|rbnz|snb|boc|bank of canada|bank of japan|bank of england|central bank|powell|lagarde|rate decision|rate cut|rate hike|monetary policy)\b/.test(t)) return 'Central Banks';
   if (/\b(forex|currency|currencies|dollar|yen|euro|sterling|pound|dxy|usd|eurusd|gbpusd|usdjpy|gbpjpy|eurjpy|audusd|nzdusd|usdcad|usdchf|eurusd|eurgbp|usdcnh|cnh|cadjpy|eur\/usd|gbp\/usd|usd\/jpy|gbp\/jpy|aud\/usd|nzd\/usd|usd\/cad|usd\/chf)\b/.test(t)) return 'Forex';
@@ -424,8 +426,11 @@ function selectGeneralHeadlines(all,max=MAX_ITEMS){
   if(all.length<=max)return all;
   const high=all.filter(x=>x.heat==='hot');
   const medium=all.filter(x=>x.heat==='warm');
+  const routine=all.filter(x=>x.heat==='cold');
   const selected=new Set(high.slice(0,Math.round(max*.44)));
   for(const item of medium.slice(0,Math.max(0,Math.round(max*.70)-selected.size)))selected.add(item);
+  // Keep public World News Hub broad; Gold/Forex specialization is opt-in.
+  for(const item of routine.slice(0,Math.round(max*.20)))selected.add(item);
   for(const item of all) {
     if(selected.size>=max)break;
     selected.add(item);
