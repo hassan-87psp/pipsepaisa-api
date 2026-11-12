@@ -6,6 +6,7 @@ on:
       - 'api/news.js'
       - 'tests/news-rss-cdata.test.cjs'
       - 'tests/news-dedup.test.cjs'
+      - 'tests/news-forex-gold.test.cjs'
       - 'tests/calendar-alignment.test.cjs'
       - 'package.json'
       - '.github/workflows/calendar-quality.yml'
@@ -15,6 +16,7 @@ on:
       - 'api/news.js'
       - 'tests/news-rss-cdata.test.cjs'
       - 'tests/news-dedup.test.cjs'
+      - 'tests/news-forex-gold.test.cjs'
       - 'tests/calendar-alignment.test.cjs'
       - 'package.json'
 permissions:
