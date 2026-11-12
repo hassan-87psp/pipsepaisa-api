@@ -268,9 +268,9 @@ function classify(title, fallback) {
   if (/\b(bitcoin|btc|crypto|ethereum|eth|blockchain)\b/.test(t)) return 'Crypto';
   if (/\b(gold|xauusd|silver|bullion|precious metals)\b/.test(t)) return 'Gold';
   if (/\b(war|conflict|missile|sanctions|ceasefire|tariffs|geopolitic)\b/.test(t)) return 'Geopolitics';
-  if (/\b(fed|fomc|ecb|boe|boj|central bank|powell|rate decision|rate cut|rate hike)\b/.test(t)) return 'Central Banks';
-  if (/\b(forex|currency|currencies|dollar|yen|euro|sterling|pound|dxy|usd|eurusd|gbpusd|usdjpy)\b/.test(t)) return 'Forex';
-  if (/\b(cpi|pce|inflation|payroll|nfp|gdp|employment|unemployment|retail sales|consumer confidence)\b/.test(t)) return 'Macro';
+  if (/\b(fed|fomc|ecb|boe|boj|rba|rbnz|snb|boc|bank of canada|bank of japan|bank of england|central bank|powell|lagarde|rate decision|rate cut|rate hike|monetary policy)\b/.test(t)) return 'Central Banks';
+  if (/\b(forex|currency|currencies|dollar|yen|euro|sterling|pound|dxy|usd|eurusd|gbpusd|usdjpy|gbpjpy|eurjpy|audusd|nzdusd|usdcad|usdchf|eurusd|eurgbp|usdcnh|cnh|cadjpy|eur\/usd|gbp\/usd|usd\/jpy|gbp\/jpy|aud\/usd|nzd\/usd|usd\/cad|usd\/chf)\b/.test(t)) return 'Forex';
+  if (/\b(cpi|ppi|pce|jolts|nonfarm|payroll|nfp|gdp|inflation|employment|unemployment|retail sales|consumer confidence|ism pmi|jobless claims|real yields|treasury yields|tips yields)\b/.test(t)) return 'Macro';
   if (/\b(stocks|nasdaq|s&p|dow jones|shares|treasury|oil|bond|yields)\b/.test(t)) return 'Markets';
   return fallback;
 }
@@ -303,7 +303,7 @@ function gradeHeadline(title) {
   const outcome=/\b(?:rises?|rose|falls?|fell|drops?|jump(?:s|ed)?|surges?|released?|report(?:s|ed)?|printed|prints?|surpris(?:e|es|ed)|beats?|misses?|unexpectedly|to \d|at \d)\b/.test(t) &&
     (/\d/.test(t)||/\b(?:released|surpris\w*|unexpectedly|beats?|misses?)\b/.test(t));
   const rateAction=/\b(?:cuts?|hikes?|raises?|holds?|held|leaves?|left|unchanged|decides?|decision|votes?|emergency|unexpectedly)\b/.test(t);
-  const market=/\b(?:fx|forex|currency|currencies|dollar|usd|dxy|yen|jpy|eurusd|gbpusd|usdjpy|usdcad|audusd|nzdusd|usdchf|eur\/usd|gbp\/usd|gold|bullion|silver|xauusd|xagusd|oil|crude|brent|wti|opec|bond yields?|treasury yields?|stock markets?)\b/.test(t);
+  const market=/\b(?:fx|forex|currency|currencies|dollar|usd|dxy|yen|jpy|eurusd|gbpusd|usdjpy|gbpjpy|eurjpy|usdcad|audusd|nzdusd|usdchf|usdcnh|eurgbp|eur\/usd|gbp\/usd|gold|bullion|silver|xauusd|xagusd|gold etfs?|futures positioning|cot|cftc|oil|crude|brent|wti|opec|bond yields?|real yields?|treasury yields?|stock markets?)\b/.test(t);
   const moves=/\b(?:rises?|falls?|climbs?|drops?|surges?|slumps?|jumps?|slides?|weakens?|strengthens?|rebounds?|trades?|hits?|holds?|eases?|retreats?|rall(?:y|ies)|plunges?|sinks?|gains?|outlook|pressure|volatility|prices?)\b/.test(t);
   if(intervention&&!preview)return out('hot','FX Intervention','Official FX market intervention warning');
   if(war&&attack&&!preview&&!talks)return out('hot','Geopolitics','Reported war or shipping-security development');
@@ -317,6 +317,9 @@ function gradeHeadline(title) {
   if(policy&&trade)return out('warm','US Policy','Trade negotiations or policy commentary');
   if(actor&&(rate||/\b(?:statement|press conference|remarks|speaks?|speech|warning|meeting|minutes|inflation|policy)\b/.test(t)))
     return out('warm','Central Banks','Central bank comments or meeting preview');
+  if(/\b(?:cftc|commitments of traders|cot report|net long|net short|futures positioning|open interest|gold etf(?:s)?|gold-backed etf|central bank gold (?:purchases|buying)|world gold council)\b/.test(t)
+     && /\b(?:gold|silver|bullion|dollar|currency|currencies|fx|forex|futures|etf|cftc|cot report)\b/.test(t))
+    return out('warm','Positioning & Gold Flows','Published market positioning or ETF research, not live price impact');
   if(macro)return out('warm','Economic Data','Economic calendar/report coverage');
   if(intervention)return out('warm','FX Intervention','Currency intervention commentary');
   if(/\b(?:katayama|finance minister|fin min|japan)\b/.test(t)&&/\b(?:yen|jpy|fx market|currency market)\b/.test(t))return out('warm','FX Policy','Official currency-market comments');
@@ -391,6 +394,30 @@ function isNearDuplicateHeadline(a,b) {
   return shared>=6 && shared/union>=0.76 &&
     shared/Math.min(a.terms.length,b.terms.length)>=0.86;
 }
+// Reserve room in the 500-headline digest for what traders came to read.
+// No fake headlines, stale-data labels or impact predictions are introduced.
+function selectPriorityHeadlines(all,max=MAX_ITEMS,now=Date.now()) {
+  if(all.length<=max)return all;
+  const selected=new Set();
+  const fresh=all.filter(item=>now-Date.parse(item.date)<=72*60*60*1000);
+  const take=(items,limit)=>{
+    for(const item of items) {
+      if(selected.size>=max || limit<=0)break;
+      if(selected.has(item))continue;
+      selected.add(item);limit--;
+    }
+  };
+  const focused=fresh.filter(x=>x.marketFocus===true);
+  take(focused.filter(x=>x.category==='Gold'||x.category==='Forex'),Math.round(max*.40));
+  take(focused.filter(x=>x.category==='Macro'||x.category==='Central Banks'),Math.round(max*.26));
+  take(focused.filter(x=>['Geopolitics','US News','Markets'].includes(x.category)),Math.round(max*.18));
+  take(focused.filter(x=>x.category==='Crypto'),Math.round(max*.08));
+  // Fill unused reserved slots with the freshest remaining trading headlines.
+  take(focused,max);
+  // Preserve general/all-news discovery when fewer verified trading items exist.
+  take(all,max);
+  return [...selected].sort((a,b)=>Date.parse(b.date)-Date.parse(a.date));
+}
 function dedupe(items) {
   const seen = new Set(), all = [], prefixIndex=new Map();
   for (const item of items.sort((a,b)=>Date.parse(b.date)-Date.parse(a.date))) {
@@ -403,18 +430,7 @@ function dedupe(items) {
     prefixIndex.set(fingerprint.lead,candidates);
     all.push(item);
   }
-  if(all.length<=MAX_ITEMS)return all;
-  // Reserve enough room so crowded generic news cannot displace fresh
-  // trading-relevant headlines. The All tab retains the remaining newest items.
-  const high=all.filter(x=>x.heat==='hot');
-  const medium=all.filter(x=>x.heat==='warm');
-  const selected=new Set(high.slice(0,220));
-  for(const item of medium.slice(0,Math.max(0,350-selected.size)))selected.add(item);
-  for(const item of all) {
-    if(selected.size>=MAX_ITEMS)break;
-    selected.add(item);
-  }
-  return Array.from(selected).sort((a,b)=>Date.parse(b.date)-Date.parse(a.date));
+  return selectPriorityHeadlines(all);
 }
 async function readFeed(feed, now) {
   const start = Date.now();
@@ -493,4 +509,4 @@ module.exports = async function handler(req, res) {
 };
 
 // Pure RSS helpers for regression tests: no network traffic on import.
-module.exports._test={clean,decode,tag,parseFeed,dedupe,headlineFingerprint,isNearDuplicateHeadline};
+module.exports._test={clean,decode,tag,parseFeed,dedupe,headlineFingerprint,isNearDuplicateHeadline,gradeHeadline,classify,selectPriorityHeadlines,activeFeeds:ACTIVE_FEEDS};
