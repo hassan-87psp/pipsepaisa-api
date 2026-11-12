@@ -229,7 +229,7 @@ const ACTIVE_FEEDS=FEEDS.filter(feed=>{
 });
 
 const MAX_ITEMS = 500;
-const CACHE_MS = 2 * 60 * 1000;
+const CACHE_MS = 4 * 60 * 1000;
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 5000;
 let cache = { at: 0, items: [], tradingItems: [], sourcesOk: 0, feedHealth: [], totalParsed: 0 };
@@ -495,7 +495,7 @@ async function refresh() {
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Cache-Control', 'public, s-maxage=90, stale-while-revalidate=180');
+  res.setHeader('Cache-Control', 'public, s-maxage=180, stale-while-revalidate=600');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method && req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed', items: [] });
 
@@ -522,9 +522,14 @@ module.exports = async function handler(req, res) {
     // Compact mode is opt-in for mobile Studio; the regular API contract stays unchanged.
     // Avoid shipping duplicate Google News redirect URLs and source feed URLs on every item.
     const selected=filtered.slice(0,limit);
-    const compact=req.query?.compact==='1';
-    const items=compact ? selected.map(({title,desc,date,link,source,category,heat,marketFocus})=>
-      ({title,desc,date,link,source,category,heat,marketFocus})) : selected;
+    const compact=req.query?.compact;
+    // compact=1: private Studio preview uses minimal public headline fields.
+    // compact=2: World News Hub also keeps impact reasons and focus topics.
+    // Both omit duplicated links and full publisher RSS URLs to cut transfer.
+    const items=compact==='1' ? selected.map(({title,desc,date,link,source,category,heat,marketFocus})=>
+      ({title,desc,date,link,source,category,heat,marketFocus})) :
+      compact==='2' ? selected.map(({title,desc,date,link,source,category,heat,marketFocus,focusTopic,heatReason})=>
+      ({title,desc,date,link,source,category,heat,marketFocus,focusTopic,heatReason})) : selected;
     return res.status(200).json({ success: filtered.length > 0, items,
       total: filtered.length, focusCount: filtered.filter(x=>x.marketFocus).length,
       configured: FEEDS.length, sources: cache.sourcesOk, updatedAt: cache.at ? new Date(cache.at).toISOString() : null,
