@@ -425,7 +425,13 @@ module.exports = async function handler(req, res) {
     const filtered = category ? cache.items.filter(x => x.category.toLowerCase() === category) : cache.items;
     res.setHeader('X-News-Sources-OK', String(cache.sourcesOk));
     res.setHeader('X-News-Cache', now - cache.at < CACHE_MS ? 'FRESH' : 'STALE');
-    return res.status(200).json({ success: filtered.length > 0, items: filtered.slice(0, limit),
+    // Compact mode is opt-in for mobile Studio; the regular API contract stays unchanged.
+    // Avoid shipping duplicate Google News redirect URLs and source feed URLs on every item.
+    const selected=filtered.slice(0,limit);
+    const compact=req.query?.compact==='1';
+    const items=compact ? selected.map(({title,desc,date,link,source,category,heat,marketFocus})=>
+      ({title,desc,date,link,source,category,heat,marketFocus})) : selected;
+    return res.status(200).json({ success: filtered.length > 0, items,
       total: filtered.length, focusCount: filtered.filter(x=>x.marketFocus).length,
       configured: FEEDS.length, sources: cache.sourcesOk, updatedAt: cache.at ? new Date(cache.at).toISOString() : null,
       ...(filtered.length ? {} : { error: 'News feeds temporarily unavailable' }) });
