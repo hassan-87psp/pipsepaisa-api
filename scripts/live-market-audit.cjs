@@ -221,8 +221,12 @@ async function main(){
   critical.push('Market-data endpoint failed');
  if(report.calendar && report.calendar.total===0)
   critical.push('Verified calendar contains no events');
- if(report.calendar && report.calendar.pastEvents>0 && report.calendar.pastWithActual===0)
-  critical.push('All recorded historical Actual values disappeared');
+ // A provider that has not published an Actual cannot prove the site lost it.
+ // Keep the gap as a visible warning; fail if the weekly source HAS actuals
+ // but the website has none. Official locked releases are checked above.
+ if(report.calendar && report.calendar.pastEvents>0 && report.calendar.pastWithActual===0 &&
+    Number(report.forexFactoryWeekly?.withActual||0)>0)
+  critical.push('Published Forex Factory Actuals missing from production calendar');
  if(report.news && (report.news.working===0||report.news.uniqueHeadlines===0))
   critical.push('All live news sources or headlines disappeared');
  if(report.news && report.news.bloombergConfigured>0 && report.news.bloombergHeadlines===0)
