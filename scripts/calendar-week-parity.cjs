@@ -93,10 +93,11 @@ async function audit(){
  }
  if(report.summary.published===0)
   report.warnings.push('No Forex Factory weekly export verified: parity NOT confirmed');
- // Missing future-week source is a parity failure, not a successful empty
- // comparison. This deliberately triggers automated GitHub issue escalation.
+ // An upstream 403/404 is a provider-availability warning, not evidence of
+ // an incorrect website calendar. Keep the unverified week visible in the
+ // report and the standing GitHub issue; still FAIL genuine parity mismatches.
  if(report.weeks.nextweek?.status!=='published')
-  report.errors.push('Next-week Forex Factory source unavailable: exact event/name/forecast/previous parity NOT verified');
+  report.warnings.push('Next-week Forex Factory source unavailable: exact event/name/forecast/previous parity NOT verified');
  if(data.some(e=>Date.parse(e.date)>now&&e.actual))
   report.errors.push('Future event has Actual before release');
  if(data.some(e=>!e||!e.title||!e.country||!Number.isFinite(Date.parse(e.date))))
