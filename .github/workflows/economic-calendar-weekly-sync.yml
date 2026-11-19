@@ -52,11 +52,12 @@ jobs:
             fi
           fi
       - name: Keep next-week source blocker in issue #2 (at most one comment daily)
-        if: failure()
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RUN_LINK: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          AUDIT_JOB_STATUS: ${{ job.status }}
         shell: bash
         run: |
           if [ -f calendar-parity-last.json ] && node -e 'const r=require("./calendar-parity-last.json");process.exit(r.weeks.nextweek?.status!=="published"?0:1)'; then
@@ -67,6 +68,10 @@ jobs:
               gh issue comment 2 --body "Auto-check $day: Next-week exact Forex Factory data remains unverified (dated HTML blocked or weekly JSON unavailable). Current source fallback is still clearly labelled. Check: $RUN_LINK"
             fi
           else
+            # A verified, clean comparison needs no issue action.
+            if [[ "$AUDIT_JOB_STATUS" != "failure" ]]; then
+              exit 0
+            fi
             title="Economic Calendar automatic parity failure"
             existing="$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number' || true)"
             body="An automatic economic calendar check failed. See workflow: $RUN_LINK"
